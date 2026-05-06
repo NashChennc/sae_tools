@@ -8,46 +8,70 @@ It bridges `transformer_lens` (for model hooking) and `sae_lens` (for SAE encodi
 
 ### Core Components
 
-#### 1. `load.py`: Model Loading & Adaptation
-Handles model and SAE initialization with support for offline environments and format conversion.
-* **LLM Loading**: Wraps `HookedTransformer` with a monkey-patching mechanism to intercept `AutoConfig`, enabling forced offline loading from local paths.
-* **SAE Loading**: Provides `load_custom_batch_topk_as_jumprelu` to convert raw PyTorch weights (e.g., from BatchTopK training) into `sae_lens` native `JumpReLUSAE` instances, automatically handling parameter renaming and transposition.
+#### 1. `adapters/models` and `adapters/saes`: stable path and format profiles
+Profiles are the source of truth for model paths, SAE paths, adapter names, dimensions, and file naming.
 
-#### 2. `run.py`: Activation Generation
+* `qwen3-8b-guard`: `${MODEL_ROOT}/Qwen/Qwen3Guard-Gen-8B`
+* `qwen3-8b-base`: `${MODEL_ROOT}/Qwen/Qwen3-8B`
+* `qwen-scope-qwen3-8b-l0-50`: `${SAE_ROOT}/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50/layer{layer}.sae.pt`
+* `adamkarvonen`: the existing Adam Karvonen BatchTopK checkpoint, loaded through the original conversion logic
+
+#### 2. `load_model.py`: LLM loading
+The TL3 path is `load_transformer_bridge_offline`. It loads the Hugging Face model and tokenizer from a local directory with `local_files_only=True`, then boots a TransformerLens `TransformerBridge`.
+
+The old `load_hooked_transformer_offline` function remains in place for reference and for the Adam Karvonen compatibility path, but the default generation script uses TransformerBridge.
+
+#### 3. `adapters/saes`: SAE format adapters
+SAE loading is routed through `sae_tools.adapters.saes.load_sae_adapter(profile=...)`.
+
+* `qwen_scope_topk`: loads Qwen-Scope `.pt` files with `W_enc/W_dec/b_enc/b_dec`, validates shapes, and implements TopK `encode`.
+* `adamkarvonen`: thin adapter that preserves and calls the original `load_custom_batch_topk_as_jumprelu` function.
+
+Business scripts should not inspect checkpoint keys or construct SAE filenames directly.
+
+#### 4. `run.py`: Activation Generation
 Manages the forward pass and feature extraction pipeline.
 * **Formatting**: Processes input text using prompt templates (User/Assistant) and identifies valid token start/end indices.
-* **Caching & Encoding**: Runs the model to cache residual stream activations, encodes them via the SAE, and filters out high-norm outliers.
-* **Sparse Storage**: Converts activation results into Sparse COO Tensors to optimize memory usage.
+* **Caching & Encoding**: Uses the TL3 residual output hook from `hooks.py`, encodes activations via the selected SAE adapter, and filters high-norm outliers.
+* **Sparse Storage**: Converts activation results into Sparse COO tensors for downstream analysis.
+
+### Hook convention
+
+The residual stream hook for TL3 is:
+
+```python
+blocks.{layer}.hook_out
+```
+
+Always call `residual_post_hook_name(layer)` instead of hard-coding hook names.
 
 ### Usage
 
-This module is typically used in conjunction with the `data_loader` module. Below is a minimal example:
+This module is typically used in conjunction with `sae_tools.adapters.datasets`. Below is a minimal example:
 
 ```python
-import torch
-from sae_analysis.src.model.load import load_hooked_transformer_offline, load_custom_batch_topk_as_jumprelu
-from sae_analysis.src.model.run import generate_activations
+from sae_tools.adapters.models import get_model_profile, load_model_from_profile
+from sae_tools.adapters.saes import get_sae_profile, load_sae_adapter
+from sae_tools.model import residual_post_hook_name
+from sae_tools.model.run import generate_activations
 
-# 1. Configuration
-MODEL_PATH = "path/to/your/hf_model"
-SAE_PATH = "path/to/your/sae/ae.pt"
-LAYER = 18
-DEVICE = "cuda"
+model_profile = get_model_profile("qwen3-8b-guard")
+sae_profile = get_sae_profile("qwen-scope-qwen3-8b-l0-50")
+layer = 18
 
-# 2. Load Model (LLM)
-tokenizer, model = load_hooked_transformer_offline(
-    model_name="Qwen/Qwen3-8B",
-    model_path=MODEL_PATH,
-    device=DEVICE
+tokenizer, model, model_profile = load_model_from_profile(
+    model_root="/path/from/MODEL_ROOT",
+    profile_name=model_profile.name,
+    device="cuda",
 )
 
-# 3. Load SAE (Auto-converted to JumpReLU)
-sae = load_custom_batch_topk_as_jumprelu(
-    model_name="Qwen/Qwen3-8B",
-    sae_id="custom_sae_id",
-    sae_path=SAE_PATH,
-    layer=LAYER,
-    device=DEVICE
+sae = load_sae_adapter(
+    profile=sae_profile,
+    sae_path="/path/from/SAE_ROOT/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50/layer18.sae.pt",
+    model_name=model_profile.hf_name,
+    layer=layer,
+    hook_name=residual_post_hook_name(layer),
+    device="cuda",
 )
 
 # 4. Generate Activations
@@ -56,7 +80,7 @@ results = generate_activations(
     tokenizer=tokenizer,
     model=model,
     sae=sae,
-    layer=LAYER,
+    layer=layer,
     dataset=dataset,
     data_type="prompt", 
     batch_size=1
@@ -81,4 +105,5 @@ torch.save(results, "activations.pt")
 ### Integration
 
 * **Script**: See `0_generate_activations.py` in the project root for the full batch processing workflow.
+* **Analysis**: Use `sae_tools.analysis` for category, statistical, geometric, and dashboard workflows.
 * **Dependencies**: Requires `sae_lens` for SAE operations and `transformer_lens` for model instrumentation.

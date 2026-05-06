@@ -4,9 +4,13 @@ import matplotlib.colors as mcolors
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
-import cudf # GPU DataFrame
-import cuml # GPU Machine Learning
-from cuml.manifold import UMAP
+
+try:
+    import cudf
+    from cuml.manifold import UMAP
+except ImportError:
+    cudf = None
+    UMAP = None
 
 def get_density_fast(x, y, bins=100, sigma=2):
     """
@@ -73,6 +77,12 @@ def visualize_density(x, y, z, selected_indices):
     plt.show()
 
 def run_umap(data):
+    if cudf is None or UMAP is None:
+        raise ImportError(
+            "RAPIDS dependencies are required for run_umap. "
+            "Install cudf and cuml before running geometric UMAP analysis."
+        )
+
     gpu_data = cudf.DataFrame(data)
 
     umap_gpu = UMAP(

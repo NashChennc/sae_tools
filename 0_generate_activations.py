@@ -3,68 +3,80 @@ import yaml
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
 
 import torch
 
-from sae_tools.data_loader import get_adapter
+from sae_tools.adapters.datasets import get_adapter
 from sae_tools.utils import FilenameConstructor
-from sae_tools.model.load_model import (
-    load_hooked_transformer_offline,
-    load_custom_batch_topk_as_jumprelu
-)
+from sae_tools.adapters.models import get_model_profile, load_model_from_profile
+from sae_tools.adapters.saes import get_sae_profile, load_sae_adapter
+from sae_tools.model import residual_post_hook_name
 from sae_tools.model.run import generate_activations
 
 BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
 MODEL_ROOT = os.getenv("MODEL_ROOT")
 SAE_ROOT = os.getenv("SAE_ROOT")
 DATASET_ROOT = os.getenv("DATASET_ROOT")
 
-def load_model(
-    model_name: str,
-    model_path: str,
-    sae_id: str,
-    sae_path: str,
-    layer: int,
-    device: str
-):
-    model_path = os.path.join(MODEL_ROOT, model_path)
-    sae_path = os.path.join(SAE_ROOT, sae_path)
+def _require_env(name: str, value: str | None) -> str:
+    if not value:
+        raise EnvironmentError(f"{name} is not set. Configure it in {BASE_DIR / '.env'}.")
+    return value
 
-    tokenizer, model = load_hooked_transformer_offline(
-        model_name=model_name,
-        model_path=model_path,
-        device=device
+
+def load_model_and_sae(args):
+    model_root = _require_env("MODEL_ROOT", MODEL_ROOT)
+    sae_root = _require_env("SAE_ROOT", SAE_ROOT)
+
+    sae_profile = get_sae_profile(args.sae_profile)
+    layer = sae_profile.default_layer if args.layer is None else args.layer
+
+    sae_path = sae_profile.layer_path(sae_root, layer)
+    hook_name = residual_post_hook_name(layer)
+
+    tokenizer, model, model_profile = load_model_from_profile(
+        model_root=model_root,
+        profile_name=args.model_profile,
+        device=args.device,
+        dtype=args.dtype,
     )
 
-    sae = load_custom_batch_topk_as_jumprelu(
-        model_name=model_name,
-        sae_id=sae_id,
+    sae = load_sae_adapter(
+        profile=sae_profile,
         sae_path=sae_path,
+        model_name=model_profile.hf_name,
         layer=layer,
-        device=device
+        hook_name=hook_name,
+        device=args.device,
+        dtype=args.dtype,
     )
-    return tokenizer, model, sae
+    return tokenizer, model, sae, model_profile, sae_profile, layer
 
 def main(args):
-    tokenizer, model, sae = load_model(
-        model_name=args.model_name,
-        model_path=args.model_path,
-        sae_id=args.sae_id,
-        sae_path=args.sae_path,
-        layer=args.layer,
-        device=args.device
-    )
+    tokenizer, model, sae, model_profile, sae_profile, layer = load_model_and_sae(args)
 
     with open(args.dataset_config, 'r', encoding='utf-8') as f:
         dataset_config = yaml.safe_load(f)
     
-    max_samples = dataset_config.get('max_samples', -1)
+    defaults = dataset_config.get('defaults', {})
+    max_samples = args.max_samples
+    if max_samples is None:
+        max_samples = dataset_config.get('max_samples', defaults.get('max_samples', -1))
+
     datasets = dataset_config.get('datasets', [])
+    if args.dataset_names:
+        requested = {name.strip() for name in args.dataset_names.split(",") if name.strip()}
+        datasets = [item for item in datasets if item.get("name") in requested]
+        missing = requested.difference({item.get("name") for item in datasets})
+        if missing:
+            raise ValueError(f"Requested dataset names not found in config: {sorted(missing)}")
+
     print(f">>> Found {len(datasets)} datasets in {args.dataset_config}")
 
     filecon = FilenameConstructor(
-        args.model_name,
+        f"{model_profile.name}_{sae_profile.name}_L{layer}",
         args.output_dir
     )
     for dataset_info in datasets:
@@ -89,42 +101,39 @@ def main(args):
             tokenizer=tokenizer,
             model=model,
             sae=sae,
-            layer=args.layer,
+            layer=layer,
             dataset=dataset,
             data_type=dataset_type,
-            batch_size=1 # TODO: args.batch_size not used because the padding logic is not implemented
+            batch_size=args.batch_size
         )
-        output_file = filecon.file_name("Guard", dataset_name, "predictions", "pt")
+        output_file = filecon.file_name("SAE", dataset_name, "predictions", "pt")
         torch.save(results, output_file)
         print(f">>> Results saved to {output_file}")
     
     print(f"\n>>> All datasets processed successfully!")
 
-DEFAULT_MODEL_NAME = "Qwen/Qwen3-8B"
-DEFAULT_MODEL_PATH = "Qwen/Qwen3Guard-Gen-8B"
-DEFAULT_SAE_ID = "adamkarvonen/qwen3-8b-saes"
-DEFAULT_SAE_PATH = "adamkarvonen/qwen3-8b-saes/saes_Qwen_Qwen3-8B_batch_top_k/resid_post_layer_18/trainer_2/ae.pt"
-DEFAULT_SAE_LAYER = 18
+DEFAULT_MODEL_PROFILE = "qwen3-8b-guard"
+DEFAULT_SAE_PROFILE = "qwen-scope-qwen3-8b-l0-50"
 DEFAULT_DATASETS = BASE_DIR / "configs/datasets/datasets_prompt.yaml"
 DEFAULT_OUTPUT_DIR = BASE_DIR / "results"
 DEFAULT_DEVICE = "cuda"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate New Method Model")
-    parser.add_argument("--model_name", type=str, default=DEFAULT_MODEL_NAME)
-    parser.add_argument("--model_path", type=str, default=DEFAULT_MODEL_PATH)
-    
-    parser.add_argument("--sae_id", type=str, default=DEFAULT_SAE_ID)
-    parser.add_argument("--sae_path", type=str, default=DEFAULT_SAE_PATH)
-    parser.add_argument("--layer", type=int, default=DEFAULT_SAE_LAYER)
+    parser.add_argument("--model_profile", type=str, default=DEFAULT_MODEL_PROFILE)
+    parser.add_argument("--sae_profile", type=str, default=DEFAULT_SAE_PROFILE)
+    parser.add_argument("--layer", type=int, default=None)
     
     parser.add_argument("--dataset_config", type=str, default=DEFAULT_DATASETS)
+    parser.add_argument("--dataset_names", type=str, default=None, help="Comma-separated dataset names to run")
+    parser.add_argument("--max_samples", type=int, default=None)
     
-    parser.add_argument("--batch_size", type=int, default=1, help="not used")
+    parser.add_argument("--batch_size", type=int, default=1)
     
     parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT_DIR)
 
     parser.add_argument("--device", type=str, default=DEFAULT_DEVICE)
+    parser.add_argument("--dtype", type=str, default="bfloat16")
 
     args = parser.parse_args()
     main(args)

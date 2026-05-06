@@ -4,21 +4,83 @@ from typing import Dict, Any
 import torch
 
 import contextlib
-import transformer_lens.loading_from_pretrained as tl_loading
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformer_lens import HookedTransformer
 
-from sae_lens.saes.jumprelu_sae import JumpReLUSAE, JumpReLUSAEConfig
-from sae_lens.saes.sae import SAEMetadata
+def _resolve_torch_dtype(dtype: str | torch.dtype) -> torch.dtype:
+    if isinstance(dtype, torch.dtype):
+        return dtype
+    if dtype == "auto":
+        return torch.bfloat16
+    try:
+        return getattr(torch, dtype)
+    except AttributeError as exc:
+        raise ValueError(f"Unknown torch dtype '{dtype}'") from exc
+
+
+def load_transformer_bridge_offline(
+    model_name: str,
+    model_path: str,
+    device: str = "cuda",
+    dtype: str | torch.dtype = "bfloat16",
+):
+    """
+    Load a local Hugging Face checkpoint through TransformerLens 3 TransformerBridge.
+
+    The model and tokenizer are loaded from model_path with local_files_only=True
+    first. That keeps offline/limited-network deployments independent from the
+    Hugging Face model id used for architecture/profile selection.
+    """
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformer_lens.model_bridge.bridge import TransformerBridge
+
+    torch_dtype = _resolve_torch_dtype(dtype)
+    print(f">>> Loading local HF model for TransformerBridge: {model_name} from {model_path}...")
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path,
+        local_files_only=True,
+        trust_remote_code=True,
+    )
+
+    model_kwargs = dict(
+        device_map="cpu",
+        local_files_only=True,
+        trust_remote_code=True,
+    )
+    try:
+        hf_model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            dtype=torch_dtype,
+            **model_kwargs,
+        )
+    except TypeError:
+        hf_model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch_dtype,
+            **model_kwargs,
+        )
+
+    model = TransformerBridge.boot_transformers(
+        model_name,
+        hf_model=hf_model,
+        tokenizer=tokenizer,
+        device=device,
+        dtype=torch_dtype,
+        trust_remote_code=True,
+    )
+    print(">>> TransformerBridge loaded successfully.")
+    return tokenizer, model
 
 def load_hooked_transformer_offline(
     model_name: str,
     model_path: str,
     device: str = "cuda"
-) -> HookedTransformer:
+):
     """
     Load the hooked transformer model from the local model path.
     """
+    import transformer_lens.loading_from_pretrained as tl_loading
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformer_lens import HookedTransformer
 
     print(f">>> Loading: {model_name} from {model_path}...")
 
@@ -78,10 +140,12 @@ def load_custom_batch_topk_as_jumprelu(
     layer: int,
     device: str = "cuda",
     dtype: str = "bfloat16"
-) -> JumpReLUSAE:
+):
     """
     Load the original weight BatchTopK model, and convert it to the native JumpReLU instance of SAE Lens.
     """
+    from sae_lens.saes.jumprelu_sae import JumpReLUSAE, JumpReLUSAEConfig
+    from sae_lens.saes.sae import SAEMetadata
     
     print(f">>> Loading: SAE {sae_id} from {sae_path}...")
 
@@ -194,6 +258,9 @@ def load_decoder_matrix(file_path):
     # In the original code, decoder.weight is usually [d_model, d_sae] (Linear layer default), and after transpose, it becomes [d_sae, d_model]
     if target_key == "decoder.weight":
         print(">>> Applying transpose to match SAE Lens format (W.T)...")
+        W_dec = W_dec.T
+    elif target_key == "W_dec" and W_dec.ndim == 2 and W_dec.shape[0] < W_dec.shape[1]:
+        print(">>> Applying transpose for [d_model, d_sae] W_dec checkpoint layout...")
         W_dec = W_dec.T
     
     return W_dec

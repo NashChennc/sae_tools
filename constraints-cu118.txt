@@ -1,0 +1,3 @@
+# TransformerLens 3.1 requires torch>=2.6. Use CUDA 11.8 runtime wheels to
+# avoid pip selecting newer CUDA 13 wheels that do not match the local driver.
+torch==2.6.0+cu118

@@ -7,12 +7,30 @@ name = "sae_tools"
 version = "0.1.0"
 description = "Analysis framework for SAE activations"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 dependencies = [
-    "sae-lens",
+    "torch>=2.6,<2.7",
+    "transformer-lens>=3.1,<4",
+    "sae-lens>=6.43,<7",
+    "transformers>=4.57,<5",
+    "huggingface-hub>=0.36",
+    "hf-xet",
     "python-dotenv",
-    "datasets" 
+    "datasets",
+    "pyyaml",
+    "tqdm",
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "seaborn",
+    "ipywidgets"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest"
 ]
 
 [tool.setuptools.packages.find]

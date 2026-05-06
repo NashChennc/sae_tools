@@ -2,6 +2,7 @@ from tqdm import tqdm
 from typing import Dict, Any, List, Tuple
 import torch
 from .formatting import format_with_tokenizer
+from .hooks import residual_post_hook_name
 
 def process_batch(
     tokenizer, 
@@ -38,9 +39,43 @@ def filter_activations_by_norm(
     norms_BL = acts_BLD.norm(dim=-1)
     median_norm = norms_BL.median()
     norm_mask_BL = norms_BL > (median_norm * 10)
+    norm_mask_BL = norm_mask_BL.to(device=encoded_acts_BLF.device)
     encoded_acts_BLF = encoded_acts_BLF * ~norm_mask_BL[:, :, None]
     encoded_acts_BLF[:,0,:] = 0
     return encoded_acts_BLF
+
+
+def _model_device(model) -> torch.device:
+    cfg = getattr(model, "cfg", None)
+    cfg_device = getattr(cfg, "device", None)
+    if cfg_device is not None:
+        return torch.device(cfg_device)
+    try:
+        return next(model.parameters()).device
+    except StopIteration:
+        return torch.device("cpu")
+
+
+def _texts_to_tokens(tokenizer, texts: List[str], device: torch.device) -> torch.Tensor:
+    token_lists = [tokenizer.encode(text, add_special_tokens=False) for text in texts]
+    if not token_lists:
+        raise ValueError("No texts were provided for activation generation.")
+
+    max_len = max(len(tokens) for tokens in token_lists)
+    if max_len == 0:
+        raise ValueError("Cannot generate activations for empty tokenized text.")
+
+    pad_id = tokenizer.pad_token_id
+    if pad_id is None:
+        pad_id = tokenizer.eos_token_id
+    if pad_id is None:
+        pad_id = 0
+
+    padded = [
+        tokens + [pad_id] * (max_len - len(tokens))
+        for tokens in token_lists
+    ]
+    return torch.tensor(padded, dtype=torch.long, device=device)
     
 def generate_activations_batch(
     tokenizer,
@@ -53,7 +88,7 @@ def generate_activations_batch(
     """
     Full inference, return the activations in sparse matrix format.
     """
-    hook_name = f"blocks.{layer}.hook_resid_post"
+    hook_name = residual_post_hook_name(layer)
     
     with torch.no_grad():
         batch_texts, valid_token_indices = process_batch(
@@ -61,7 +96,8 @@ def generate_activations_batch(
             raw_batch=data,
             data_type=data_type
         )
-        _, cache = model.run_with_cache(batch_texts, names_filter=hook_name)
+        tokens = _texts_to_tokens(tokenizer, batch_texts, _model_device(model))
+        _, cache = model.run_with_cache(tokens, names_filter=hook_name)
 
         # acts_BLD Shape: [Batch, Length, d_model]
         acts_BLD = cache[hook_name]
@@ -111,7 +147,8 @@ def generate_activations(
     all_valid_token_idx = []
     all_seq_lens = []
     
-    for i in tqdm(range(0, total_samples, batch_size), total=total_samples // batch_size):
+    total_batches = (total_samples + batch_size - 1) // batch_size
+    for i in tqdm(range(0, total_samples, batch_size), total=total_batches):
         
         current_batch_indices = range(i, min(i + batch_size, total_samples))
         
@@ -128,7 +165,7 @@ def generate_activations(
         for _ in range(B):
             all_seq_lens.append(L)
         # [Batch, Length, Feature] -> [Batch*Length, Feature]
-        flat_act = encoded_acts_BLF.squeeze(0)
+        flat_act = encoded_acts_BLF.reshape(B * L, F)
         sparse_acts = flat_act.to_sparse()
 
         all_sparse_acts.append(sparse_acts.cpu())
