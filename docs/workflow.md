@@ -9,10 +9,16 @@ sae_tools library     model, dataset, statistical, geometric, dashboard code
 CLI scripts           one artifact per command
 Snakemake             dependency tracking, reruns, reuse
 GPU runner            target-level GPU allocation and memory records
+TUI                   frontend/status display over workflow runtime helpers
 ```
 
-The TUI or any future UI should call the runner or Snakemake targets. It should
-not implement scheduling itself.
+The TUI calls Snakemake dry-run commands and the idle-GPU runner. It does not
+implement scheduling itself.
+
+Shared scan and command-building helpers live in
+`src/sae_tools/workflow/runtime.py`. Use them from both scripts and UI code so
+target expansion, artifact status, resource checks, GPU classification, and
+command construction stay consistent.
 
 ## Registry
 
@@ -42,15 +48,15 @@ ToxicChat does not provide a response label.
 The default workflow is:
 
 ```bash
-/NAS/chennc/anaconda3/bin/conda run -n sae-tl3 snakemake -n
-/NAS/chennc/anaconda3/bin/conda run -n sae-tl3 snakemake -j 1 --rerun-incomplete
+conda activate sae-tl3
+snakemake -n
+snakemake -j 1 --rerun-incomplete
 ```
 
 Run a non-default experiment config:
 
 ```bash
-/NAS/chennc/anaconda3/bin/conda run -n sae-tl3 \
-  snakemake -n --config experiment_config=configs/experiments/response_grid.yaml
+snakemake -n --config experiment_config=configs/experiments/response_grid.yaml
 ```
 
 The `Snakefile` computes targets from the selected experiment YAML. Completed

@@ -23,9 +23,8 @@ def test_registry_loads_default_yaml_and_validates_backends():
 
     assert "qwen3-8b-guard" in registry.models
     assert "qwen3-8b" in registry.models
-    assert registry.model("qwen3-8b-base").local_path == "Qwen/Qwen3-8B"
     assert "qwen-scope-qwen3-8b-l0-50" in registry.saes
-    assert registry.sae("qwen-scope-qwen3-8b-l0-100").layers == (15, 18, 21, 24)
+    assert registry.sae("qwen-scope-qwen3-8b-l0-100").layers == (15, 18, 21, 24, 27, 30, 33)
     assert registry.sae("qwen-scope-qwen3-8b-l0-100").top_k == 100
     assert registry.dataset("ToxicChat_prompt").adapter == "ToxicChat"
     assert registry.dataset("ToxicChat_response").label_field == "prompt_label"
@@ -55,6 +54,25 @@ def test_experiment_expands_activation_stat_and_geometric_jobs():
     assert len(stat_batch_jobs) == 4
     assert {job["metric"] for job in stat_jobs} == {"pearson", "auroc", "f1"}
     assert {job["method"] for job in geo_jobs} == {"norm", "seed_topk_cosine"}
+
+
+def test_response_grid_expands_requested_layers_only():
+    registry = load_registry("configs/registry")
+    experiment = ExperimentSpec.load("configs/experiments/response_grid.yaml", registry)
+
+    activation_jobs = experiment.activation_jobs(registry)
+    stat_batch_jobs = experiment.stat_batch_jobs(registry)
+    geo_jobs = experiment.geometric_jobs(registry)
+
+    assert experiment.layers == (15, 18, 21, 24, 27, 30, 33)
+    assert len(activation_jobs) == 42
+    assert len(stat_batch_jobs) == 84
+    assert len(geo_jobs) == 28
+    assert {job["sae"] for job in activation_jobs} == {
+        "qwen-scope-qwen3-8b-l0-50",
+        "qwen-scope-qwen3-8b-l0-100",
+    }
+    assert {job["layer"] for job in activation_jobs} == {15, 18, 21, 24, 27, 30, 33}
 
 
 def test_deterministic_artifact_paths_are_normalized():

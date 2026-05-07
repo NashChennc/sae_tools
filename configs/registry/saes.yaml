@@ -4,7 +4,7 @@ saes:
     local_dir: Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50
     adapter: qwen_scope_topk
     default_layer: 18
-    layers: [18]
+    layers: [15, 18, 21, 24, 27, 30, 33]
     top_k: 50
     d_model: 4096
     d_sae: 65536
@@ -17,7 +17,7 @@ saes:
     local_dir: Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100
     adapter: qwen_scope_topk
     default_layer: 18
-    layers: [15, 18, 21, 24]
+    layers: [15, 18, 21, 24, 27, 30, 33]
     top_k: 100
     d_model: 4096
     d_sae: 65536

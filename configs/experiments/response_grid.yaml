@@ -1,5 +1,8 @@
 models: [qwen3-8b]
-saes: [qwen-scope-qwen3-8b-l0-50]
+saes:
+  - qwen-scope-qwen3-8b-l0-50
+  - qwen-scope-qwen3-8b-l0-100
+layers: [15, 18, 21, 24, 27, 30, 33]
 datasets:
   - ToxicChat_response
   - Aegis2.0_response

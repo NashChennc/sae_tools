@@ -4,6 +4,11 @@
 empty GPUs and records memory use. It does not replace Snakemake; it launches
 one Snakemake target per selected GPU.
 
+The TUI `Run missing` action invokes this runner with `--no-conda-run`, so it
+uses the environment that launched the TUI. Direct shell usage keeps the
+runner's CLI defaults unless `--no-conda-run` is passed. The runner resolves
+the conda executable from `CONDA_EXE`, falling back to `conda` on `PATH`.
+
 ## Empty GPU Selection
 
 Default filters:
@@ -20,8 +25,8 @@ cards. Cards with real allocations are skipped.
 Dry-run selection:
 
 ```bash
-/NAS/chennc/anaconda3/bin/conda run --live-stream -n sae-tl3 \
-  python scripts/run_idle_gpu_workflow.py --dry-run
+conda activate sae-tl3
+python scripts/run_idle_gpu_workflow.py --dry-run
 ```
 
 Limit or override selection:

@@ -36,6 +36,13 @@ dev = [
 workflow = [
     "snakemake>=8,<10"
 ]
+tui = [
+    "rich>=13",
+    "textual>=0.58"
+]
+
+[project.scripts]
+sae-tools-tui = "sae_tools_tui.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

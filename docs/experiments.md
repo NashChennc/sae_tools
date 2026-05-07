@@ -1,5 +1,13 @@
 # Experiments
 
+The TUI can scan and compare all experiment YAML files:
+
+```bash
+sae-tools-tui
+```
+
+The shell commands below are the backend commands that the TUI wraps.
+
 ## Prompt Grid
 
 The default prompt experiment is:
@@ -11,14 +19,14 @@ configs/experiments/safety_grid.yaml
 Preview:
 
 ```bash
-/NAS/chennc/anaconda3/bin/conda run -n sae-tl3 snakemake -n
+conda activate sae-tl3
+snakemake -n
 ```
 
 Run with automatic GPU allocation:
 
 ```bash
-/NAS/chennc/anaconda3/bin/conda run --live-stream -n sae-tl3 \
-  python scripts/run_idle_gpu_workflow.py
+python scripts/run_idle_gpu_workflow.py
 ```
 
 ## Response Grid
@@ -40,15 +48,14 @@ BeaverTails_response
 Preview:
 
 ```bash
-/NAS/chennc/anaconda3/bin/conda run -n sae-tl3 \
-  snakemake -n --config experiment_config=configs/experiments/response_grid.yaml
+conda activate sae-tl3
+snakemake -n --config experiment_config=configs/experiments/response_grid.yaml
 ```
 
 Run:
 
 ```bash
-/NAS/chennc/anaconda3/bin/conda run --live-stream -n sae-tl3 \
-  python scripts/run_idle_gpu_workflow.py \
+python scripts/run_idle_gpu_workflow.py \
   --config configs/experiments/response_grid.yaml
 ```
 

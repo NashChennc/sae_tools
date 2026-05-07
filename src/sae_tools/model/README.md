@@ -13,7 +13,6 @@ Profiles are the source of truth for model paths, SAE paths, adapter names, dime
 
 * `qwen3-8b-guard`: `${MODEL_ROOT}/Qwen/Qwen3Guard-Gen-8B`
 * `qwen3-8b`: `${MODEL_ROOT}/Qwen/Qwen3-8B`
-* `qwen3-8b-base`: compatibility alias for `qwen3-8b`
 * `qwen-scope-qwen3-8b-l0-50`: `${SAE_ROOT}/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50/layer{layer}.sae.pt`
 * `adamkarvonen`: the existing Adam Karvonen BatchTopK checkpoint, loaded through the original conversion logic
 
@@ -51,24 +50,28 @@ Always call `residual_post_hook_name(layer)` instead of hard-coding hook names.
 This module is typically used in conjunction with `sae_tools.adapters.datasets`. Below is a minimal example:
 
 ```python
+import os
+
 from sae_tools.adapters.models import get_model_profile, load_model_from_profile
 from sae_tools.adapters.saes import get_sae_profile, load_sae_adapter
 from sae_tools.model import residual_post_hook_name
 from sae_tools.model.run import generate_activations
 
+model_root = os.environ["MODEL_ROOT"]
+sae_root = os.environ["SAE_ROOT"]
 model_profile = get_model_profile("qwen3-8b-guard")
 sae_profile = get_sae_profile("qwen-scope-qwen3-8b-l0-50")
 layer = 18
 
 tokenizer, model, model_profile = load_model_from_profile(
-    model_root="/path/from/MODEL_ROOT",
+    model_root=model_root,
     profile_name=model_profile.name,
     device="cuda",
 )
 
 sae = load_sae_adapter(
     profile=sae_profile,
-    sae_path="/path/from/SAE_ROOT/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50/layer18.sae.pt",
+    sae_path=sae_profile.layer_path(sae_root, layer),
     model_name=model_profile.hf_name,
     layer=layer,
     hook_name=residual_post_hook_name(layer),

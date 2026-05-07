@@ -196,19 +196,7 @@ class Registry:
         dataset_file = _read_yaml(directory / "datasets.yaml")
         analysis_data = _section(_read_yaml(directory / "analyses.yaml"), "analyses")
 
-        expanded_model_data: dict[str, dict[str, Any]] = {}
-        for key, value in model_data.items():
-            if "alias_for" in value:
-                target = str(value["alias_for"])
-                if target not in model_data:
-                    raise ValueError(f"Model alias '{key}' points to unknown model '{target}'.")
-                aliased = dict(model_data[target])
-                aliased.update({k: v for k, v in value.items() if k != "alias_for"})
-                expanded_model_data[key] = aliased
-            else:
-                expanded_model_data[key] = value
-
-        models = {key: ModelSpec.from_mapping(key, value) for key, value in expanded_model_data.items()}
+        models = {key: ModelSpec.from_mapping(key, value) for key, value in model_data.items()}
 
         expanded_sae_data: dict[str, dict[str, Any]] = {}
         for key, value in sae_data.items():
@@ -300,6 +288,7 @@ class ExperimentSpec:
     path: Path
     models: tuple[str, ...]
     saes: tuple[str, ...]
+    layers: tuple[int, ...] | None
     datasets: tuple[ExperimentDataset, ...]
     analyses: tuple[str, ...]
     activation_overwrite: bool = False
@@ -325,6 +314,7 @@ class ExperimentSpec:
             path=path,
             models=tuple(str(item) for item in data.get("models", ())),
             saes=tuple(str(item) for item in data.get("saes", ())),
+            layers=None if data.get("layers") is None else tuple(int(item) for item in _as_tuple(data.get("layers"))),
             datasets=datasets,
             analyses=tuple(str(item) for item in data.get("analyses", ())),
             activation_overwrite=bool(activation.get("overwrite", False)),
@@ -347,6 +337,15 @@ class ExperimentSpec:
                 compatible = registry.sae(sae_key).compatible_models
                 if compatible and model_key not in compatible:
                     raise ValueError(f"Model '{model_key}' is not compatible with SAE '{sae_key}'.")
+        if self.layers is not None:
+            for sae_key in self.saes:
+                sae = registry.sae(sae_key)
+                unsupported = sorted(set(self.layers).difference(sae.layers))
+                if unsupported:
+                    raise ValueError(
+                        f"Experiment '{self.path}' requests unsupported layers for SAE '{sae_key}': {unsupported}. "
+                        f"Supported layers: {list(sae.layers)}"
+                    )
 
     def dataset_max_samples(self, registry: Registry, dataset_key: str) -> int | None:
         for item in self.datasets:
@@ -360,26 +359,30 @@ class ExperimentSpec:
     def geometric_analyses(self, registry: Registry) -> tuple[AnalysisSpec, ...]:
         return tuple(registry.analysis(key) for key in self.analyses if registry.analysis(key).kind == "geometric")
 
+    def layers_for_sae(self, registry: Registry, sae_key: str) -> tuple[int, ...]:
+        sae = registry.sae(sae_key)
+        return self.layers if self.layers is not None else (sae.default_layer,)
+
     def activation_jobs(self, registry: Registry) -> list[dict[str, Any]]:
         jobs: list[dict[str, Any]] = []
         for model_key in self.models:
             for sae_key in self.saes:
-                sae = registry.sae(sae_key)
-                for dataset_item in self.datasets:
-                    dataset = registry.dataset(dataset_item.key)
-                    max_samples = self.dataset_max_samples(registry, dataset.key)
-                    jobs.append(
-                        {
-                            "model": model_key,
-                            "sae": sae_key,
-                            "layer": sae.default_layer,
-                            "dataset": dataset.key,
-                            "split": dataset.split_part,
-                            "n": normalize_n(max_samples),
-                            "max_samples": max_samples,
-                            "batch_size": self.activation_batch_size,
-                        }
-                    )
+                for layer in self.layers_for_sae(registry, sae_key):
+                    for dataset_item in self.datasets:
+                        dataset = registry.dataset(dataset_item.key)
+                        max_samples = self.dataset_max_samples(registry, dataset.key)
+                        jobs.append(
+                            {
+                                "model": model_key,
+                                "sae": sae_key,
+                                "layer": layer,
+                                "dataset": dataset.key,
+                                "split": dataset.split_part,
+                                "n": normalize_n(max_samples),
+                                "max_samples": max_samples,
+                                "batch_size": self.activation_batch_size,
+                            }
+                        )
         return jobs
 
     def stat_jobs(self, registry: Registry) -> list[dict[str, Any]]:
@@ -402,19 +405,19 @@ class ExperimentSpec:
     def geometric_jobs(self, registry: Registry) -> list[dict[str, Any]]:
         jobs: list[dict[str, Any]] = []
         for sae_key in self.saes:
-            sae = registry.sae(sae_key)
-            for analysis in self.geometric_analyses(registry):
-                for method in analysis.methods:
-                    jobs.append(
-                        {
-                            "sae": sae_key,
-                            "layer": sae.default_layer,
-                            "method": method,
-                            "top_k": analysis.top_k,
-                            "seed_limit": analysis.seed_limit,
-                            "chunk_size": analysis.chunk_size,
-                        }
-                    )
+            for layer in self.layers_for_sae(registry, sae_key):
+                for analysis in self.geometric_analyses(registry):
+                    for method in analysis.methods:
+                        jobs.append(
+                            {
+                                "sae": sae_key,
+                                "layer": layer,
+                                "method": method,
+                                "top_k": analysis.top_k,
+                                "seed_limit": analysis.seed_limit,
+                                "chunk_size": analysis.chunk_size,
+                            }
+                        )
         return jobs
 
 

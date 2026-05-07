@@ -4,7 +4,6 @@ import argparse
 import csv
 import json
 import os
-import re
 import shlex
 import subprocess
 import sys
@@ -12,7 +11,6 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -20,21 +18,16 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from sae_tools.workflow import activation_path, geometric_path, stat_analysis_dir
-from sae_tools.workflow.registry import ExperimentSpec, Registry
-
-
-@dataclass(frozen=True)
-class GPUInfo:
-    index: int
-    name: str
-    memory_total_mib: int
-    memory_used_mib: int
-    utilization_gpu_pct: int
-
-    @property
-    def memory_free_mib(self) -> int:
-        return self.memory_total_mib - self.memory_used_mib
+from sae_tools.workflow.runtime import (
+    GPUInfo,
+    build_runner_target_command,
+    classify_gpus,
+    parse_gpu_set as _parse_gpu_set,
+    query_gpus,
+    requested_stages as _requested_stages,
+    target_log_name as _target_log_name,
+    workflow_targets,
+)
 
 
 @dataclass
@@ -97,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--poll-interval", type=float, default=10.0)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--keep-going", action="store_true")
-    parser.add_argument("--conda-bin", default=os.environ.get("CONDA_EXE", "/NAS/chennc/anaconda3/bin/conda"))
+    parser.add_argument("--conda-bin", default=os.environ.get("CONDA_EXE", "conda"))
     parser.add_argument("--conda-env", default="sae-tl3")
     parser.add_argument("--no-conda-run", action="store_true")
     parser.add_argument("--snakemake-cmd", default="snakemake")
@@ -105,185 +98,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _parse_gpu_set(value: str | None) -> set[int] | None:
-    if value is None or not value.strip():
-        return None
-    return {int(item.strip()) for item in value.split(",") if item.strip()}
-
-
-def query_gpus() -> list[GPUInfo]:
-    command = [
-        "nvidia-smi",
-        "--query-gpu=index,name,memory.total,memory.used,utilization.gpu",
-        "--format=csv,noheader,nounits",
-    ]
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
-    gpus: list[GPUInfo] = []
-    for line in result.stdout.splitlines():
-        if not line.strip():
-            continue
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) != 5:
-            raise ValueError(f"Unexpected nvidia-smi row: {line!r}")
-        gpus.append(
-            GPUInfo(
-                index=int(parts[0]),
-                name=parts[1],
-                memory_total_mib=int(parts[2]),
-                memory_used_mib=int(parts[3]),
-                utilization_gpu_pct=int(parts[4]),
-            )
-        )
-    return gpus
-
-
-def classify_gpus(
-    gpus: Iterable[GPUInfo],
-    *,
-    max_gpu_util: int,
-    max_used_mib: int,
-    min_free_mib: int,
-    include: set[int] | None,
-    exclude: set[int] | None,
-) -> tuple[list[GPUInfo], list[dict[str, object]]]:
-    selected: list[GPUInfo] = []
-    rows: list[dict[str, object]] = []
-    for gpu in gpus:
-        reasons: list[str] = []
-        if include is not None and gpu.index not in include:
-            reasons.append("not in include list")
-        if exclude is not None and gpu.index in exclude:
-            reasons.append("excluded")
-        if gpu.utilization_gpu_pct > max_gpu_util:
-            reasons.append(f"utilization {gpu.utilization_gpu_pct}% > {max_gpu_util}%")
-        if gpu.memory_used_mib > max_used_mib:
-            reasons.append(f"used memory {gpu.memory_used_mib} MiB > {max_used_mib} MiB")
-        if gpu.memory_free_mib < min_free_mib:
-            reasons.append(f"free memory {gpu.memory_free_mib} MiB < {min_free_mib} MiB")
-        is_selected = not reasons
-        if is_selected:
-            selected.append(gpu)
-        rows.append(
-            {
-                "gpu": gpu.index,
-                "name": gpu.name,
-                "total_mib": gpu.memory_total_mib,
-                "used_mib": gpu.memory_used_mib,
-                "free_mib": gpu.memory_free_mib,
-                "util_pct": gpu.utilization_gpu_pct,
-                "selected": "yes" if is_selected else "no",
-                "reason": "selected" if is_selected else "; ".join(reasons),
-            }
-        )
-    return selected, rows
-
-
-def _activation_targets(experiment: ExperimentSpec, registry: Registry) -> list[str]:
-    targets = []
-    for job in experiment.activation_jobs(registry):
-        dataset = registry.dataset(job["dataset"])
-        targets.append(
-            str(
-                activation_path(
-                    model=job["model"],
-                    sae=job["sae"],
-                    layer=job["layer"],
-                    dataset=job["dataset"],
-                    split=dataset.split,
-                    max_samples=job["max_samples"],
-                )
-            )
-        )
-    return targets
-
-
-def _stat_targets(experiment: ExperimentSpec, registry: Registry) -> list[str]:
-    return [
-        str(
-            stat_analysis_dir(
-                model=job["model"],
-                sae=job["sae"],
-                layer=job["layer"],
-                dataset=job["dataset"],
-                agg=job["agg"],
-            )
-            / "DONE"
-        )
-        for job in experiment.stat_batch_jobs(registry)
-    ]
-
-
-def _geometric_targets(experiment: ExperimentSpec, registry: Registry) -> list[str]:
-    experiment_name = experiment.path.stem
-    return [
-        str(
-            geometric_path(
-                sae=job["sae"],
-                layer=job["layer"],
-                method=job["method"],
-                experiment=experiment_name if job["method"] == "seed_topk_cosine" else None,
-            )
-        )
-        for job in experiment.geometric_jobs(registry)
-    ]
-
-
-def workflow_targets(config_path: Path, registry_dir: Path) -> dict[str, list[str]]:
-    registry = Registry.load(registry_dir)
-    experiment = ExperimentSpec.load(config_path, registry)
-    return {
-        "activations": _activation_targets(experiment, registry),
-        "stat": _stat_targets(experiment, registry),
-        "geometric": _geometric_targets(experiment, registry),
-    }
-
-
-def _requested_stages(value: str) -> list[str]:
-    if value.strip().lower() == "all":
-        return ["activations", "stat", "geometric"]
-    stages = [item.strip() for item in value.split(",") if item.strip()]
-    valid = {"activations", "stat", "geometric"}
-    unknown = sorted(set(stages).difference(valid))
-    if unknown:
-        raise ValueError(f"Unknown stages: {unknown}. Valid stages: {sorted(valid)}")
-    return stages
-
-
-def _target_log_name(stage: str, target: str) -> str:
-    import hashlib
-
-    digest = hashlib.sha1(target.encode("utf-8")).hexdigest()[:10]
-    compact = re.sub(r"[^A-Za-z0-9_.=-]+", "_", target)
-    compact = compact.strip("_")[-100:]
-    return f"{stage}.{compact}.{digest}.log"
-
-
 def _build_command(args: argparse.Namespace, target: str) -> list[str]:
-    snakemake_args = [
-        "--snakefile",
-        str(args.snakefile),
-        "--directory",
-        str(REPO_ROOT),
-        "--nolock",
-        "--rerun-incomplete",
-        "--config",
-        f"experiment_config={args.config}",
-        "-j",
-        "1",
-        target,
-    ]
-    snakemake_args.extend(args.extra_snakemake_arg)
-    if args.no_conda_run:
-        return shlex.split(args.snakemake_cmd) + snakemake_args
-    return [
-        str(args.conda_bin),
-        "run",
-        "--live-stream",
-        "-n",
-        str(args.conda_env),
-        *shlex.split(args.snakemake_cmd),
-        *snakemake_args,
-    ]
+    return build_runner_target_command(
+        target=target,
+        config_path=args.config,
+        snakefile=args.snakefile,
+        repo_root=REPO_ROOT,
+        snakemake_cmd=args.snakemake_cmd,
+        extra_snakemake_args=args.extra_snakemake_arg,
+        conda_bin=args.conda_bin,
+        conda_env=args.conda_env,
+        no_conda_run=args.no_conda_run,
+    )
 
 
 def _snapshot_by_index() -> dict[int, GPUInfo]:

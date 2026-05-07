@@ -14,6 +14,3 @@ models:
     device: cuda
     available: auto
     description: Qwen3-8B checkpoint matching the Qwen-Scope SAE training target.
-
-  qwen3-8b-base:
-    alias_for: qwen3-8b

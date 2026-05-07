@@ -26,13 +26,7 @@ MODEL_PROFILES = {
     ),
 }
 
-MODEL_ALIASES = {
-    "qwen3-8b-base": "qwen3-8b",
-}
-
-
 def get_model_profile(name: str) -> ModelProfile:
-    name = MODEL_ALIASES.get(name, name)
     try:
         return MODEL_PROFILES[name]
     except KeyError as exc:
