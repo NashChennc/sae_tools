@@ -12,6 +12,7 @@ sae_tools.egg-info/
 
 # Results and outputs
 results/
+artifacts/
 history/
 *.log
 *.pt

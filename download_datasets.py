@@ -20,8 +20,8 @@ if ENV_PATH.exists():
 DATASET_ROOT = os.getenv("DATASET_ROOT")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-# Default configuration directory
-DEFAULT_CONFIG_DIR = os.path.join(BASE_DIR, "configs/datasets")
+# Default registry file. Legacy configs/datasets/*.yaml are still supported via --config_dir.
+DEFAULT_CONFIG_DIR = os.path.join(BASE_DIR, "configs/registry/datasets.yaml")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -58,15 +58,24 @@ def process_single_config(config_path, data_root, check_mode):
 
     logger.info(f"📄 Processing config: {os.path.basename(config_path)}")
     with open(config_path, 'r', encoding='utf-8') as f:
-        # Get the dataset list from the YAML file
-        datasets = yaml.safe_load(f).get('datasets', [])
+        config = yaml.safe_load(f) or {}
+        raw_datasets = config.get('datasets', [])
+
+    if isinstance(raw_datasets, dict):
+        datasets = [
+            {"id": key, **value}
+            for key, value in raw_datasets.items()
+        ]
+    else:
+        datasets = raw_datasets
 
     if not datasets:
         logger.warning(f"   No datasets found in {os.path.basename(config_path)}")
         return
 
     for item in datasets:
-        name, folder = item.get('name'), item.get('folder')
+        name = item.get('adapter') or item.get('name')
+        folder = item.get('folder')
         if not name or not folder: continue
         
         # Path processing

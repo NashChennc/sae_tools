@@ -82,6 +82,33 @@ def test_activation_artifact_check_points_to_generation_step(tmp_path):
         == activation_file
     )
 
+    deterministic_file = (
+        tmp_path
+        / "activations"
+        / "model=qwen3-8b-guard"
+        / "sae=qwen-scope-qwen3-8b-l0-50"
+        / "layer=18"
+        / "dataset=ToxicChat"
+        / "split=default"
+        / "n=all"
+        / "acts.pt"
+    )
+    deterministic_file.parent.mkdir(parents=True)
+    deterministic_file.write_bytes(b"new")
+    assert (
+        find_latest_activation_file(
+            results_dir=tmp_path,
+            dataset_name="ToxicChat",
+            model_profile="qwen3-8b-guard",
+            sae_profile="qwen-scope-qwen3-8b-l0-50",
+            layer=18,
+        )
+        == deterministic_file
+    )
+
+    assert "scripts/gen_activations_one.py" in command
+    assert "--model qwen3-8b-guard" in command
+
 
 def test_activation_schema_check_requires_generate_activations_keys():
     require_activation_keys({"sparse_acts": object(), "valid_token_idx": object(), "seq_lens": object()})

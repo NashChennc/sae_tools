@@ -1,0 +1,12 @@
+analyses:
+  stat_basic:
+    kind: statistical
+    aggregations: [max, mean]
+    metrics: [pearson, auroc, f1]
+    top_k: 50
+
+  geo_basic:
+    kind: geometric
+    methods: [norm, topk_cosine]
+    top_k: 50
+    chunk_size: 256

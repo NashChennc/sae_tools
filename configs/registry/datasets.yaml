@@ -1,0 +1,106 @@
+defaults:
+  max_samples: 1000
+
+datasets:
+  ToxicChat_prompt:
+    adapter: ToxicChat
+    folder: toxic-chat
+    data_type: prompt
+    split: null
+
+  OpenAIMod_prompt:
+    adapter: OpenAIMod
+    folder: OpenAIMod
+    data_type: prompt
+    split: null
+
+  Aegis1.0_prompt:
+    adapter: Aegis1.0
+    folder: Aegis-AI-Content-Safety-Dataset-1.0
+    data_type: prompt
+    split: null
+
+  Aegis2.0_prompt:
+    adapter: Aegis2.0
+    folder: Aegis-AI-Content-Safety-Dataset-2.0
+    data_type: prompt
+    split: null
+
+  Aegis2.0_train_prompt:
+    adapter: Aegis2.0
+    folder: Aegis-AI-Content-Safety-Dataset-2.0
+    data_type: prompt
+    split: train
+
+  SimpleSafetyTest_prompt:
+    adapter: SimpleSafetyTest
+    folder: SimpleSafetyTests
+    data_type: prompt
+    split: null
+
+  HarmBench_prompt:
+    adapter: HarmBench
+    folder: HarmBench
+    data_type: prompt
+    split: null
+
+  WildGuardTest_prompt:
+    adapter: WildGuardTest
+    folder: WildGuardTest
+    data_type: prompt
+    split: null
+
+  HarmBenchResponse_response:
+    adapter: HarmBenchResponse
+    folder: HarmBench
+    data_type: response
+    split: null
+
+  BeaverTails_response:
+    adapter: BeaverTails
+    folder: BeaverTails
+    data_type: response
+    split: null
+
+  BeaverTails_train_response:
+    adapter: BeaverTails
+    folder: BeaverTails
+    data_type: response
+    split: 30k_train
+
+  BeaverTailsAugmented_response:
+    adapter: BeaverTailsAugmented
+    folder: BeaverTailsAugmented
+    data_type: response
+    split: null
+
+  SafeRLHF_response:
+    adapter: SafeRLHF
+    folder: PKU-SafeRLHF
+    data_type: response
+    split: null
+
+  SafeRLHF_train_response:
+    adapter: SafeRLHF
+    folder: PKU-SafeRLHF
+    data_type: response
+    split: train
+
+  XSTestResponse_response:
+    adapter: XSTestResponse
+    folder: xstest-response
+    data_type: response
+    split: null
+
+  WildGuardMix_train_response:
+    adapter: WildGuardMix
+    folder: wildguardmix
+    data_type: response
+    subset: wildguardtrain
+    split: train
+
+  Aegis2.0_train_response:
+    adapter: Aegis2.0
+    folder: Aegis-AI-Content-Safety-Dataset-2.0
+    data_type: response
+    split: train

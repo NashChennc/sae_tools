@@ -45,6 +45,15 @@ DATASET_ROOT=./datasets
 
 Paths about models/saes/datasets in this repo are relative paths based on these roots. You can check your dataset config (and download datasets that fit the config) by running `download_datasets.py`.
 
+Experiment orchestration is driven by YAML registry files:
+
+```text
+configs/registry/{models,saes,datasets,analyses}.yaml
+configs/experiments/safety_grid.yaml
+```
+
+The registry keeps model/SAE IDs stable with the existing Python profiles, while dataset IDs distinguish prompt/response variants such as `ToxicChat_prompt`.
+
 ## Profiles and SAE Files
 
 `0_generate_activations.py` uses named profiles so model paths, SAE paths, and file formats stay centralized:
@@ -60,21 +69,46 @@ Download the default Qwen-Scope layer 18 SAE into the stable `SAE_ROOT` layout:
 python download_saes.py --sae_profile qwen-scope-qwen3-8b-l0-50 --layers 18
 ```
 
-Run a local smoke test:
+Inspect local resource availability:
 
 ```bash
-python 0_generate_activations.py \
-  --model_profile qwen3-8b-guard \
-  --sae_profile qwen-scope-qwen3-8b-l0-50 \
-  --layer 18 \
-  --dataset_names ToxicChat \
-  --max_samples 2
+python scripts/inspect_registry.py
 ```
 
-Analysis notebooks expect activation `.pt` files produced by `0_generate_activations.py`.
-`1_statistical.ipynb` and `2_dashboard.ipynb` now search the latest matching run under
-`results/SAE_{model_profile}_{sae_profile}_L{layer}_*/predictions/{dataset}.pt`;
-if no file is found, they print the exact generation command to run first.
+Run a local smoke test for one deterministic activation artifact:
+
+```bash
+python scripts/gen_activations_one.py \
+  --model qwen3-8b-guard \
+  --sae qwen-scope-qwen3-8b-l0-50 \
+  --layer 18 \
+  --dataset ToxicChat_prompt \
+  --max-samples 2
+```
+
+Artifacts are written to deterministic paths such as:
+
+```text
+artifacts/activations/model=qwen3-8b-guard/sae=qwen-scope-qwen3-8b-l0-50/layer=18/dataset=ToxicChat_prompt/split=default/n=1000/acts.pt
+```
+
+Each completed artifact has sibling `meta.json` and `DONE` files. The legacy
+`0_generate_activations.py` entrypoint is still available, but it now writes the
+same deterministic artifact layout instead of timestamped `results/SAE_*` runs.
+
+Run the configured workflow with Snakemake:
+
+```bash
+# Use the project environment and install workflow dependency if needed
+conda activate sae-tl3
+pip install -e ".[workflow]"
+
+# Preview jobs
+snakemake -n
+
+# Run missing activation + analysis artifacts
+snakemake -j 4 --rerun-incomplete
+```
 
 ## Module Documentation
 

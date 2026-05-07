@@ -4,6 +4,8 @@ import shlex
 from pathlib import Path
 from typing import Iterable
 
+from sae_tools.workflow.artifacts import activation_path
+
 
 def activation_run_pattern(model_profile: str, sae_profile: str, layer: int) -> str:
     """Return the run directory glob used by 0_generate_activations.py."""
@@ -23,23 +25,30 @@ def build_generate_activations_command(
     device: str = "cuda",
     dtype: str = "bfloat16",
 ) -> str:
-    """Build a copy-pasteable activation generation command."""
+    """Build a copy-pasteable single-artifact activation generation command."""
     parts = [
         "python",
-        "0_generate_activations.py",
-        "--model_profile",
+        "scripts/gen_activations_one.py",
+        "--model",
         model_profile,
-        "--sae_profile",
+        "--sae",
         sae_profile,
         "--layer",
         str(layer),
-        "--dataset_config",
-        str(dataset_config),
-        "--dataset_names",
+        "--dataset",
         dataset_name,
-        "--output_dir",
-        str(output_dir),
-        "--batch_size",
+        "--out",
+        str(
+            activation_path(
+                root=output_dir,
+                model=model_profile,
+                sae=sae_profile,
+                layer=layer,
+                dataset=dataset_name,
+                max_samples=max_samples,
+            )
+        ),
+        "--batch-size",
         str(batch_size),
         "--device",
         device,
@@ -47,7 +56,8 @@ def build_generate_activations_command(
         dtype,
     ]
     if max_samples is not None:
-        parts.extend(["--max_samples", str(max_samples)])
+        parts.extend(["--max-samples", str(max_samples)])
+    del dataset_config
     return " ".join(shlex.quote(part) for part in parts)
 
 
@@ -77,8 +87,32 @@ def find_latest_activation_file(
     predictions_dir: str = "predictions",
     generate_command: str | None = None,
 ) -> Path:
-    """Find the newest activation file for a dataset/profile/layer tuple."""
+    """Find a deterministic activation file, with legacy timestamp fallback."""
     base = Path(results_dir).expanduser()
+    deterministic = activation_path(
+        root=base,
+        model=model_profile,
+        sae=sae_profile,
+        layer=layer,
+        dataset=dataset_name,
+        max_samples=None,
+    )
+    if deterministic.exists():
+        return deterministic
+
+    deterministic_candidates = list(
+        (
+            base
+            / "activations"
+            / f"model={model_profile}"
+            / f"sae={sae_profile}"
+            / f"layer={layer}"
+            / f"dataset={dataset_name}"
+        ).glob("split=*/n=*/acts.pt")
+    )
+    if deterministic_candidates:
+        return max(deterministic_candidates, key=lambda path: path.stat().st_mtime)
+
     pattern = activation_run_pattern(model_profile, sae_profile, layer)
     candidates = list(base.glob(f"{pattern}/{predictions_dir}/{dataset_name}.pt"))
     if not candidates:

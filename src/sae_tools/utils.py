@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 
 class FilenameConstructor:
     def __init__(
@@ -12,7 +11,6 @@ class FilenameConstructor:
         """
         self.output_dir = output_dir
         self.safe_model_name = model_path.strip('/').split('/')[-1]
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     
     def file_name(
         self,
@@ -22,7 +20,7 @@ class FilenameConstructor:
         extension: str = "json"
     ):
         
-        save_dir = os.path.join(self.output_dir, f"{prefix}_{self.safe_model_name}_{self.timestamp}")
+        save_dir = os.path.join(self.output_dir, f"{prefix}_{self.safe_model_name}")
         save_dir = os.path.join(save_dir, path)
         os.makedirs(save_dir, exist_ok=True)
 

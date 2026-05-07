@@ -1,0 +1,16 @@
+models:
+  qwen3-8b-guard:
+    hf_name: Qwen/Qwen3-8B
+    local_path: Qwen/Qwen3Guard-Gen-8B
+    dtype: bfloat16
+    device: cuda
+    available: auto
+    description: Local Qwen3Guard-Gen-8B checkpoint analyzed with base Qwen3 SAE features.
+
+  qwen3-8b-base:
+    hf_name: Qwen/Qwen3-8B
+    local_path: Qwen/Qwen3-8B
+    dtype: bfloat16
+    device: cuda
+    available: auto
+    description: Base Qwen3-8B checkpoint matching the Qwen-Scope SAE training target.

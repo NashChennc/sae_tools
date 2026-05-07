@@ -104,6 +104,6 @@ torch.save(results, "activations.pt")
 
 ### Integration
 
-* **Script**: See `0_generate_activations.py` in the project root for the full batch processing workflow.
+* **Script**: Use `scripts/gen_activations_one.py` for deterministic single-artifact activation generation. `0_generate_activations.py` remains as a compatibility wrapper.
 * **Analysis**: Use `sae_tools.analysis` for category, statistical, geometric, and dashboard workflows.
 * **Dependencies**: Requires `sae_lens` for SAE operations and `transformer_lens` for model instrumentation.
