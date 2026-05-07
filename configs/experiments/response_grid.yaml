@@ -1,0 +1,12 @@
+models: [qwen3-8b]
+saes: [qwen-scope-qwen3-8b-l0-50]
+datasets:
+  - ToxicChat_response
+  - Aegis2.0_response
+  - BeaverTails_response
+activation:
+  overwrite: false
+  batch_size: 2
+analyses:
+  - stat_basic
+  - geo_basic

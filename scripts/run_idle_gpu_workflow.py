@@ -214,12 +214,14 @@ def _stat_targets(experiment: ExperimentSpec, registry: Registry) -> list[str]:
 
 
 def _geometric_targets(experiment: ExperimentSpec, registry: Registry) -> list[str]:
+    experiment_name = experiment.path.stem
     return [
         str(
             geometric_path(
                 sae=job["sae"],
                 layer=job["layer"],
                 method=job["method"],
+                experiment=experiment_name if job["method"] == "seed_topk_cosine" else None,
             )
         )
         for job in experiment.geometric_jobs(registry)
@@ -264,6 +266,8 @@ def _build_command(args: argparse.Namespace, target: str) -> list[str]:
         str(REPO_ROOT),
         "--nolock",
         "--rerun-incomplete",
+        "--config",
+        f"experiment_config={args.config}",
         "-j",
         "1",
         target,

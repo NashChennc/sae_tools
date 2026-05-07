@@ -26,6 +26,12 @@ def test_profiles_resolve_stable_paths():
     assert qwen_sae.layer_path("/root", 18) == Path(
         "/root/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50/layer18.sae.pt"
     )
+    qwen_l0_100 = get_sae_profile("qwen-scope-qwen3-8b-l0-100")
+    assert qwen_l0_100.repo_id == "Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100"
+    assert qwen_l0_100.top_k == 100
+    assert qwen_l0_100.layer_path("/root", 24) == Path(
+        "/root/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100/layer24.sae.pt"
+    )
 
     adam = get_sae_profile("adamkarvonen")
     assert adam.adapter == "adamkarvonen"

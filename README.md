@@ -161,9 +161,17 @@ Use `--dry-run` to create the tables without launching jobs. Lower
 `--min-free-mib` only when you deliberately want to use GPUs with existing
 memory allocations.
 
-## Module Documentation
+## Documentation
 
-For detailed instructions on specific modules, please refer to their internal READMEs:
+Workflow and experiment guides live under [docs](docs/README.md):
+
+* **Workflow**: [docs/workflow.md](docs/workflow.md)
+* **Experiments**: [docs/experiments.md](docs/experiments.md)
+* **GPU Runner**: [docs/gpu-runner.md](docs/gpu-runner.md)
+* **Artifacts**: [docs/artifacts.md](docs/artifacts.md)
+* **Compatibility**: [docs/compatibility.md](docs/compatibility.md)
+
+For detailed module notes, refer to the internal READMEs:
 
 * **Model & Inference**: [src/sae_tools/model/README.md](src/sae_tools/model/README.md)
 * **Adapters**: [src/sae_tools/adapters/README.md](src/sae_tools/adapters/README.md)

@@ -52,6 +52,17 @@ SAE_PROFILES = {
         d_sae=65536,
         description="Qwen-Scope residual-stream TopK SAE for Qwen3-8B Base.",
     ),
+    "qwen-scope-qwen3-8b-l0-100": SAEProfile(
+        name="qwen-scope-qwen3-8b-l0-100",
+        repo_id="Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100",
+        local_dir="Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100",
+        adapter="qwen_scope_topk",
+        default_layer=18,
+        top_k=100,
+        d_model=4096,
+        d_sae=65536,
+        description="Qwen-Scope residual-stream TopK SAE L0_100 for Qwen3-8B Base.",
+    ),
     "adamkarvonen": ADAMKARVONEN_PROFILE,
     "adamkarvonen-qwen3-8b-batch-topk": ADAMKARVONEN_PROFILE,
 }

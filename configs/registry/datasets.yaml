@@ -8,6 +8,13 @@ datasets:
     data_type: prompt
     split: null
 
+  ToxicChat_response:
+    adapter: ToxicChat
+    folder: toxic-chat
+    data_type: response
+    label_field: prompt_label
+    split: null
+
   OpenAIMod_prompt:
     adapter: OpenAIMod
     folder: OpenAIMod
@@ -104,3 +111,9 @@ datasets:
     folder: Aegis-AI-Content-Safety-Dataset-2.0
     data_type: response
     split: train
+
+  Aegis2.0_response:
+    adapter: Aegis2.0
+    folder: Aegis-AI-Content-Safety-Dataset-2.0
+    data_type: response
+    split: null

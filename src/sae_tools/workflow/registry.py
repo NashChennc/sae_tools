@@ -109,6 +109,7 @@ class DatasetSpec:
     split: str | None = None
     subset: str | None = None
     max_samples: int | None = None
+    label_field_override: str | None = None
 
     @classmethod
     def from_mapping(
@@ -133,10 +134,13 @@ class DatasetSpec:
             split=None if data.get("split") is None else str(data.get("split")),
             subset=None if data.get("subset") is None else str(data.get("subset")),
             max_samples=max_samples,
+            label_field_override=None if data.get("label_field") is None else str(data.get("label_field")),
         )
 
     @property
     def label_field(self) -> str:
+        if self.label_field_override:
+            return self.label_field_override
         return f"{self.data_type}_label"
 
     @property

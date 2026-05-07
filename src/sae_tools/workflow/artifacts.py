@@ -169,12 +169,14 @@ def geometric_path(
     sae: str,
     layer: int,
     method: str,
+    experiment: str | None = None,
 ) -> Path:
     filename = "neighbors.json" if method in {"topk_cosine", "seed_topk_cosine"} else "metrics.json"
+    base = _base(root) / "analyses" / "geometric"
+    if method == "seed_topk_cosine" and experiment:
+        base = base / f"experiment={safe_path_part(experiment, field='experiment')}"
     return (
-        _base(root)
-        / "analyses"
-        / "geometric"
+        base
         / f"sae={safe_path_part(sae, field='sae')}"
         / f"layer={int(layer)}"
         / f"method={safe_path_part(method, field='method')}"
@@ -188,8 +190,9 @@ def geometric_seed_path(
     sae: str,
     layer: int,
     method: str = "seed_topk_cosine",
+    experiment: str | None = None,
 ) -> Path:
-    return geometric_path(root=root, sae=sae, layer=layer, method=method).with_name("seeds.json")
+    return geometric_path(root=root, sae=sae, layer=layer, method=method, experiment=experiment).with_name("seeds.json")
 
 
 def done_path(path: str | os.PathLike[str]) -> Path:

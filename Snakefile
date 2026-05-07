@@ -1,4 +1,5 @@
-configfile: "configs/experiments/safety_grid.yaml"
+EXPERIMENT_CONFIG = config.get("experiment_config", "configs/experiments/safety_grid.yaml")
+configfile: EXPERIMENT_CONFIG
 
 import sys
 from pathlib import Path
@@ -10,7 +11,8 @@ from sae_tools.workflow.registry import ExperimentSpec, load_registry
 
 
 REGISTRY = load_registry("configs/registry")
-EXPERIMENT = ExperimentSpec.from_mapping(config, path="configs/experiments/safety_grid.yaml", registry=REGISTRY)
+EXPERIMENT = ExperimentSpec.from_mapping(config, path=EXPERIMENT_CONFIG, registry=REGISTRY)
+EXPERIMENT_NAME = Path(EXPERIMENT_CONFIG).stem
 
 
 def _text(path):
@@ -102,6 +104,7 @@ GEO_TARGETS = [
             sae=job["sae"],
             layer=job["layer"],
             method=job["method"],
+            experiment=EXPERIMENT_NAME if job["method"] == "seed_topk_cosine" else None,
         )
     )
     for job in EXPERIMENT.geometric_jobs(REGISTRY)
@@ -254,9 +257,9 @@ rule collect_geo_seeds:
     input:
         stats=_stat_done_inputs_for_geo
     output:
-        seeds="artifacts/analyses/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
+        seeds="artifacts/analyses/geometric/experiment={experiment}/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
     log:
-        "logs/geometric/sae={sae}.layer={layer}.method=seed_topk_cosine.seeds.log"
+        "logs/geometric/experiment={experiment}.sae={sae}.layer={layer}.method=seed_topk_cosine.seeds.log"
     params:
         stat_dirs=_stat_dirs_for_geo,
         seed_limit=lambda w: _geo_seed_limit("seed_topk_cosine"),
@@ -297,11 +300,11 @@ rule geometric_analysis:
 
 rule geometric_seed_topk:
     input:
-        seeds="artifacts/analyses/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
+        seeds="artifacts/analyses/geometric/experiment={experiment}/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
     output:
-        result="artifacts/analyses/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/neighbors.json"
+        result="artifacts/analyses/geometric/experiment={experiment}/sae={sae}/layer={layer}/method=seed_topk_cosine/neighbors.json"
     log:
-        "logs/geometric/sae={sae}.layer={layer}.method=seed_topk_cosine.neighbors.log"
+        "logs/geometric/experiment={experiment}.sae={sae}.layer={layer}.method=seed_topk_cosine.neighbors.log"
     params:
         top_k=lambda w: _geo_setting("seed_topk_cosine", "top_k"),
         chunk_size=lambda w: _geo_setting("seed_topk_cosine", "chunk_size"),

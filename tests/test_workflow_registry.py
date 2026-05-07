@@ -25,7 +25,11 @@ def test_registry_loads_default_yaml_and_validates_backends():
     assert "qwen3-8b" in registry.models
     assert registry.model("qwen3-8b-base").local_path == "Qwen/Qwen3-8B"
     assert "qwen-scope-qwen3-8b-l0-50" in registry.saes
+    assert registry.sae("qwen-scope-qwen3-8b-l0-100").layers == (15, 18, 21, 24)
+    assert registry.sae("qwen-scope-qwen3-8b-l0-100").top_k == 100
     assert registry.dataset("ToxicChat_prompt").adapter == "ToxicChat"
+    assert registry.dataset("ToxicChat_response").label_field == "prompt_label"
+    assert registry.dataset("Aegis2.0_response").label_field == "response_label"
     assert registry.dataset("ToxicChat_prompt").max_samples == 1000
     assert registry.analysis("stat_basic").metrics == ("pearson", "auroc", "f1")
     assert registry.validate_backends() == []
@@ -101,6 +105,15 @@ def test_deterministic_artifact_paths_are_normalized():
         color="diff",
     ) == stat_dir / "plots" / "pr_space.color=diff.png"
     assert geometric_path(sae="qwen-scope-qwen3-8b-l0-50", layer=18, method="seed_topk_cosine").name == "neighbors.json"
+    assert geometric_path(
+        sae="qwen-scope-qwen3-8b-l0-50",
+        layer=18,
+        method="seed_topk_cosine",
+        experiment="response_grid",
+    ) == Path(
+        "artifacts/analyses/geometric/experiment=response_grid/"
+        "sae=qwen-scope-qwen3-8b-l0-50/layer=18/method=seed_topk_cosine/neighbors.json"
+    )
     assert done_path(acts) == acts.with_name("DONE")
     assert normalize_split(None) == "default"
     assert normalize_n(-1) == "all"
