@@ -88,6 +88,7 @@ Generated outputs are not source changes:
 ```text
 artifacts/
 logs/
+report/
 .snakemake/
 runs/gpu_memory/<run_id>/
 *.pt
@@ -115,6 +116,7 @@ Status convention:
 - SAE checks must cover every experiment-requested layer, not just the default layer.
 - Keep `activation.overwrite: false` unless cache regeneration is intentional.
 - Dry-run Snakemake before launching GPU jobs.
+- Layer-trend reports must read existing stat `feature_table.parquet` artifacts through workflow helpers and write generated Markdown/CSV/plots under `report/`.
 
 Expected response-grid target counts:
 

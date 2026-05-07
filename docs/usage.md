@@ -280,6 +280,45 @@ snakemake -j 1 --rerun-incomplete \
   artifacts/analyses/stat/model=qwen3-8b/sae=qwen-scope-qwen3-8b-l0-50/layer=18/dataset=ToxicChat_prompt/agg=max/DONE
 ```
 
+## Layer Trend Analysis
+
+After stat artifacts exist for a multi-layer experiment, generate layer-trend
+plots and a Markdown report:
+
+```bash
+python scripts/analyze_layer_trends.py \
+  --config configs/experiments/response_grid.yaml
+```
+
+Default outputs:
+
+```text
+report/layer_trends/experiment=response_grid/
+  layer_trends.md
+  layer_trends.csv
+  missing_artifacts.csv
+  summary.json
+  plots/<metric>.png
+```
+
+The report summarizes each metric's best layer by `topk_mean`, embeds one plot
+per metric, and links to the CSV files for detailed inspection. The script only
+reads existing `feature_table.parquet` files; it does not launch Snakemake or
+recompute statistical artifacts.
+
+Useful filters:
+
+```bash
+python scripts/analyze_layer_trends.py \
+  --metrics f1,auroc \
+  --saes qwen-scope-qwen3-8b-l0-50 \
+  --datasets ToxicChat_response \
+  --aggs max \
+  --layers 15,18,21,24,27,30,33
+```
+
+Use `--strict` when every selected layer must have a complete stat artifact.
+
 ## Troubleshooting
 
 `sae-tools-tui` is not found:

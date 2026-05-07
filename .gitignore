@@ -13,6 +13,7 @@ sae_tools.egg-info/
 # Results and outputs
 results/
 artifacts/
+report/
 history/
 runs/gpu_memory/*/
 !runs/gpu_memory/allocation_table.md
