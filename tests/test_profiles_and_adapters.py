@@ -18,6 +18,8 @@ def test_profiles_resolve_stable_paths():
     model_profile = get_model_profile("qwen3-8b-guard")
     assert model_profile.local_path == "Qwen/Qwen3Guard-Gen-8B"
     assert model_path_from_profile("/models", model_profile) == Path("/models/Qwen/Qwen3Guard-Gen-8B")
+    assert get_model_profile("qwen3-8b").local_path == "Qwen/Qwen3-8B"
+    assert get_model_profile("qwen3-8b-base").name == "qwen3-8b"
 
     qwen_sae = get_sae_profile("qwen-scope-qwen3-8b-l0-50")
     assert qwen_sae.layer_filename(18) == "layer18.sae.pt"

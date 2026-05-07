@@ -6,6 +6,9 @@ from sae_tools.workflow import (
     activation_path,
     done_path,
     geometric_path,
+    stat_analysis_dir,
+    stat_feature_table_path,
+    stat_plot_path,
     load_registry,
     normalize_n,
     normalize_split,
@@ -19,6 +22,8 @@ def test_registry_loads_default_yaml_and_validates_backends():
     registry = load_registry("configs/registry")
 
     assert "qwen3-8b-guard" in registry.models
+    assert "qwen3-8b" in registry.models
+    assert registry.model("qwen3-8b-base").local_path == "Qwen/Qwen3-8B"
     assert "qwen-scope-qwen3-8b-l0-50" in registry.saes
     assert registry.dataset("ToxicChat_prompt").adapter == "ToxicChat"
     assert registry.dataset("ToxicChat_prompt").max_samples == 1000
@@ -32,15 +37,20 @@ def test_experiment_expands_activation_stat_and_geometric_jobs():
 
     activation_jobs = experiment.activation_jobs(registry)
     stat_jobs = experiment.stat_jobs(registry)
+    stat_batch_jobs = experiment.stat_batch_jobs(registry)
     geo_jobs = experiment.geometric_jobs(registry)
 
+    assert experiment.activation_batch_size == 2
     assert len(activation_jobs) == 2
-    assert activation_jobs[0]["model"] == "qwen3-8b-guard"
+    assert activation_jobs[0]["model"] == "qwen3-8b"
     assert activation_jobs[0]["layer"] == 18
     assert activation_jobs[0]["n"] == "1000"
+    assert activation_jobs[0]["batch_size"] == 2
+    assert {job["model"] for job in activation_jobs} == {"qwen3-8b"}
     assert len(stat_jobs) == 12
+    assert len(stat_batch_jobs) == 4
     assert {job["metric"] for job in stat_jobs} == {"pearson", "auroc", "f1"}
-    assert {job["method"] for job in geo_jobs} == {"norm", "topk_cosine"}
+    assert {job["method"] for job in geo_jobs} == {"norm", "seed_topk_cosine"}
 
 
 def test_deterministic_artifact_paths_are_normalized():
@@ -68,7 +78,29 @@ def test_deterministic_artifact_paths_are_normalized():
         "artifacts/analyses/stat/model=qwen3-8b-guard/sae=qwen-scope-qwen3-8b-l0-50/"
         "layer=18/dataset=ToxicChat_prompt/agg=max/metric=auroc/metrics.json"
     )
-    assert geometric_path(sae="qwen-scope-qwen3-8b-l0-50", layer=18, method="topk_cosine").name == "neighbors.json"
+    stat_dir = stat_analysis_dir(
+        model="qwen3-8b-guard",
+        sae="qwen-scope-qwen3-8b-l0-50",
+        layer=18,
+        dataset="ToxicChat_prompt",
+        agg="max",
+    )
+    assert stat_feature_table_path(
+        model="qwen3-8b-guard",
+        sae="qwen-scope-qwen3-8b-l0-50",
+        layer=18,
+        dataset="ToxicChat_prompt",
+        agg="max",
+    ) == stat_dir / "feature_table.parquet"
+    assert stat_plot_path(
+        model="qwen3-8b-guard",
+        sae="qwen-scope-qwen3-8b-l0-50",
+        layer=18,
+        dataset="ToxicChat_prompt",
+        agg="max",
+        color="diff",
+    ) == stat_dir / "plots" / "pr_space.color=diff.png"
+    assert geometric_path(sae="qwen-scope-qwen3-8b-l0-50", layer=18, method="seed_topk_cosine").name == "neighbors.json"
     assert done_path(acts) == acts.with_name("DONE")
     assert normalize_split(None) == "default"
     assert normalize_n(-1) == "all"

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path("src").resolve()))
 
-from sae_tools.workflow import activation_path, geometric_path, stat_metrics_path
+from sae_tools.workflow import activation_path, geometric_path, geometric_seed_path, stat_analysis_dir, stat_metrics_path
 from sae_tools.workflow.registry import ExperimentSpec, load_registry
 
 
@@ -80,6 +80,22 @@ STAT_TARGETS = [
     for job in EXPERIMENT.stat_jobs(REGISTRY)
 ]
 
+STAT_BATCH_JOBS = EXPERIMENT.stat_batch_jobs(REGISTRY)
+
+STAT_BATCH_TARGETS = [
+    _text(
+        stat_analysis_dir(
+            model=job["model"],
+            sae=job["sae"],
+            layer=job["layer"],
+            dataset=job["dataset"],
+            agg=job["agg"],
+        )
+        / "DONE"
+    )
+    for job in STAT_BATCH_JOBS
+]
+
 GEO_TARGETS = [
     _text(
         geometric_path(
@@ -94,16 +110,17 @@ GEO_TARGETS = [
 
 rule all:
     input:
-        STAT_TARGETS + GEO_TARGETS
+        STAT_BATCH_TARGETS + GEO_TARGETS
 
 
 rule activations:
     output:
-        acts="artifacts/activations/model={model}/sae={sae}/layer={layer}/dataset={dataset}/split={split}/n={n}/acts.pt"
+        acts=protected("artifacts/activations/model={model}/sae={sae}/layer={layer}/dataset={dataset}/split={split}/n={n}/acts.pt")
     log:
         "logs/activations/model={model}.sae={sae}.layer={layer}.dataset={dataset}.split={split}.n={n}.log"
     params:
         max_samples=lambda w: _cli_n(w.n),
+        batch_size=lambda w: EXPERIMENT.activation_batch_size,
     shell:
         """
         mkdir -p $(dirname {log})
@@ -113,7 +130,43 @@ rule activations:
           --layer {wildcards.layer} \
           --dataset {wildcards.dataset} \
           --max-samples {params.max_samples} \
+          --batch-size {params.batch_size} \
           --out {output.acts} \
+          > {log} 2>&1
+        """
+
+
+rule stat_analysis_batch:
+    input:
+        acts=_activation_input
+    output:
+        done="artifacts/analyses/stat/model={model}/sae={sae}/layer={layer}/dataset={dataset}/agg={agg}/DONE"
+    log:
+        "logs/stat_batch/model={model}.sae={sae}.layer={layer}.dataset={dataset}.agg={agg}.log"
+    params:
+        max_samples=lambda w: _cli_n(EXPERIMENT.dataset_max_samples(REGISTRY, w.dataset)),
+        metrics=lambda w: ",".join(_stat_metrics(w.agg)),
+        top_k=lambda w: _stat_top_k(w.agg, "f1"),
+        out_dir=lambda w: _text(
+            stat_analysis_dir(
+                model=w.model,
+                sae=w.sae,
+                layer=int(w.layer),
+                dataset=w.dataset,
+                agg=w.agg,
+            )
+        ),
+    shell:
+        """
+        mkdir -p $(dirname {log})
+        python scripts/analyze_stat.py \
+          --acts {input.acts} \
+          --dataset {wildcards.dataset} \
+          --agg {wildcards.agg} \
+          --metrics {params.metrics} \
+          --max-samples {params.max_samples} \
+          --top-k {params.top_k} \
+          --out-dir {params.out_dir} \
           > {log} 2>&1
         """
 
@@ -143,7 +196,84 @@ rule stat_analysis:
         """
 
 
+def _stat_metrics(agg):
+    metrics = []
+    for analysis in EXPERIMENT.statistical_analyses(REGISTRY):
+        if agg in analysis.aggregations:
+            metrics.extend(analysis.metrics)
+    return tuple(dict.fromkeys(metrics))
+
+
+def _stat_batch_jobs_for_geo(wildcards):
+    return [
+        job
+        for job in STAT_BATCH_JOBS
+        if job["sae"] == wildcards.sae and int(job["layer"]) == int(wildcards.layer)
+    ]
+
+
+def _stat_done_inputs_for_geo(wildcards):
+    return [
+        _text(
+            stat_analysis_dir(
+                model=job["model"],
+                sae=job["sae"],
+                layer=job["layer"],
+                dataset=job["dataset"],
+                agg=job["agg"],
+            )
+            / "DONE"
+        )
+        for job in _stat_batch_jobs_for_geo(wildcards)
+    ]
+
+
+def _stat_dirs_for_geo(wildcards):
+    return " ".join(
+        _text(
+            stat_analysis_dir(
+                model=job["model"],
+                sae=job["sae"],
+                layer=job["layer"],
+                dataset=job["dataset"],
+                agg=job["agg"],
+            )
+        )
+        for job in _stat_batch_jobs_for_geo(wildcards)
+    )
+
+
+def _geo_seed_limit(method):
+    for analysis in EXPERIMENT.geometric_analyses(REGISTRY):
+        if method in analysis.methods:
+            return analysis.seed_limit
+    return 200
+
+
+rule collect_geo_seeds:
+    input:
+        stats=_stat_done_inputs_for_geo
+    output:
+        seeds="artifacts/analyses/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
+    log:
+        "logs/geometric/sae={sae}.layer={layer}.method=seed_topk_cosine.seeds.log"
+    params:
+        stat_dirs=_stat_dirs_for_geo,
+        seed_limit=lambda w: _geo_seed_limit("seed_topk_cosine"),
+    shell:
+        """
+        mkdir -p $(dirname {log})
+        python scripts/collect_stat_seeds.py \
+          --stat-dirs {params.stat_dirs} \
+          --seed-limit {params.seed_limit} \
+          --out {output.seeds} \
+          > {log} 2>&1
+        """
+
+
 rule geometric_analysis:
+    wildcard_constraints:
+        method="norm|topk_cosine"
     output:
         result="artifacts/analyses/geometric/sae={sae}/layer={layer}/method={method}/{filename}"
     log:
@@ -158,6 +288,31 @@ rule geometric_analysis:
           --sae {wildcards.sae} \
           --layer {wildcards.layer} \
           --method {wildcards.method} \
+          --top-k {params.top_k} \
+          --chunk-size {params.chunk_size} \
+          --out {output.result} \
+          > {log} 2>&1
+        """
+
+
+rule geometric_seed_topk:
+    input:
+        seeds="artifacts/analyses/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
+    output:
+        result="artifacts/analyses/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/neighbors.json"
+    log:
+        "logs/geometric/sae={sae}.layer={layer}.method=seed_topk_cosine.neighbors.log"
+    params:
+        top_k=lambda w: _geo_setting("seed_topk_cosine", "top_k"),
+        chunk_size=lambda w: _geo_setting("seed_topk_cosine", "chunk_size"),
+    shell:
+        """
+        mkdir -p $(dirname {log})
+        python scripts/analyze_geo.py \
+          --sae {wildcards.sae} \
+          --layer {wildcards.layer} \
+          --method seed_topk_cosine \
+          --seeds {input.seeds} \
           --top-k {params.top_k} \
           --chunk-size {params.chunk_size} \
           --out {output.result} \

@@ -103,6 +103,25 @@ def stat_metrics_path(
     agg: str,
     metric: str,
 ) -> Path:
+    return stat_analysis_dir(
+        root=root,
+        model=model,
+        sae=sae,
+        layer=layer,
+        dataset=dataset,
+        agg=agg,
+    ) / f"metric={safe_path_part(metric, field='metric')}" / "metrics.json"
+
+
+def stat_analysis_dir(
+    *,
+    root: str | os.PathLike[str] = "artifacts",
+    model: str,
+    sae: str,
+    layer: int,
+    dataset: str,
+    agg: str,
+) -> Path:
     return (
         _base(root)
         / "analyses"
@@ -112,8 +131,35 @@ def stat_metrics_path(
         / f"layer={int(layer)}"
         / f"dataset={safe_path_part(dataset, field='dataset')}"
         / f"agg={safe_path_part(agg, field='agg')}"
-        / f"metric={safe_path_part(metric, field='metric')}"
-        / "metrics.json"
+    )
+
+
+def stat_feature_table_path(**kwargs: Any) -> Path:
+    return stat_analysis_dir(**kwargs) / "feature_table.parquet"
+
+
+def stat_summary_path(**kwargs: Any) -> Path:
+    return stat_analysis_dir(**kwargs) / "summary.json"
+
+
+def stat_top_features_path(**kwargs: Any) -> Path:
+    return stat_analysis_dir(**kwargs) / "top_features.json"
+
+
+def stat_pareto_path(**kwargs: Any) -> Path:
+    return stat_analysis_dir(**kwargs) / "pareto_front.json"
+
+
+def stat_plot_path(
+    *,
+    color: str,
+    extension: str = "png",
+    **kwargs: Any,
+) -> Path:
+    return (
+        stat_analysis_dir(**kwargs)
+        / "plots"
+        / f"pr_space.color={safe_path_part(color, field='color')}.{safe_path_part(extension, field='extension')}"
     )
 
 
@@ -124,7 +170,7 @@ def geometric_path(
     layer: int,
     method: str,
 ) -> Path:
-    filename = "neighbors.json" if method == "topk_cosine" else "metrics.json"
+    filename = "neighbors.json" if method in {"topk_cosine", "seed_topk_cosine"} else "metrics.json"
     return (
         _base(root)
         / "analyses"
@@ -134,6 +180,16 @@ def geometric_path(
         / f"method={safe_path_part(method, field='method')}"
         / filename
     )
+
+
+def geometric_seed_path(
+    *,
+    root: str | os.PathLike[str] = "artifacts",
+    sae: str,
+    layer: int,
+    method: str = "seed_topk_cosine",
+) -> Path:
+    return geometric_path(root=root, sae=sae, layer=layer, method=method).with_name("seeds.json")
 
 
 def done_path(path: str | os.PathLike[str]) -> Path:
@@ -153,10 +209,34 @@ def write_json_atomic(path: str | os.PathLike[str], payload: Any) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f".{target.name}.tmp")
     with tmp.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
+        json.dump(payload, handle, indent=2, sort_keys=True, default=_json_default)
         handle.write("\n")
     tmp.replace(target)
     return target
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    try:
+        import numpy as np
+
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+    except Exception:
+        pass
+    try:
+        import torch
+
+        if isinstance(value, torch.Tensor):
+            if value.ndim == 0:
+                return value.item()
+            return value.detach().cpu().tolist()
+    except Exception:
+        pass
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
 
 
 def atomic_torch_save(payload: Any, path: str | os.PathLike[str]) -> Path:

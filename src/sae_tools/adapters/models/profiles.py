@@ -18,16 +18,21 @@ MODEL_PROFILES = {
         local_path="Qwen/Qwen3Guard-Gen-8B",
         description="Local Qwen3Guard-Gen-8B checkpoint analyzed with base Qwen3 SAE features.",
     ),
-    "qwen3-8b-base": ModelProfile(
-        name="qwen3-8b-base",
+    "qwen3-8b": ModelProfile(
+        name="qwen3-8b",
         hf_name="Qwen/Qwen3-8B",
         local_path="Qwen/Qwen3-8B",
-        description="Base Qwen3-8B checkpoint matching the Qwen-Scope SAE training target.",
+        description="Qwen3-8B checkpoint matching the Qwen-Scope SAE training target.",
     ),
+}
+
+MODEL_ALIASES = {
+    "qwen3-8b-base": "qwen3-8b",
 }
 
 
 def get_model_profile(name: str) -> ModelProfile:
+    name = MODEL_ALIASES.get(name, name)
     try:
         return MODEL_PROFILES[name]
     except KeyError as exc:

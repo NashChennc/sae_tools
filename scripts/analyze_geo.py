@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import torch
@@ -18,8 +19,9 @@ def parse_args() -> argparse.Namespace:
     add_registry_args(parser)
     parser.add_argument("--sae", required=True, help="SAE registry key.")
     parser.add_argument("--layer", type=int, default=None)
-    parser.add_argument("--method", required=True, choices=["norm", "topk_cosine"])
+    parser.add_argument("--method", required=True, choices=["norm", "topk_cosine", "seed_topk_cosine"])
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--seeds", type=Path, default=None)
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--chunk-size", type=int, default=256)
     parser.add_argument("--device", default="cpu")
@@ -77,6 +79,58 @@ def _topk_cosine_payload(W_dec: torch.Tensor, top_k: int, chunk_size: int, devic
     }
 
 
+def _read_seed_features(path: Path) -> list[int]:
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    features = payload.get("features", [])
+    if not features:
+        raise ValueError(f"No seed features found in {path}")
+    return [int(item) for item in features]
+
+
+def _seed_topk_cosine_payload(
+    W_dec: torch.Tensor,
+    *,
+    seed_features: list[int],
+    top_k: int,
+    chunk_size: int,
+    device: str,
+) -> dict:
+    matrix = F.normalize(W_dec.float(), p=2, dim=1).to(device)
+    n_features = matrix.shape[0]
+    seeds = [feature for feature in seed_features if 0 <= feature < n_features]
+    if not seeds:
+        raise ValueError("No valid seed features remain after range filtering.")
+
+    records = []
+    for start in range(0, len(seeds), chunk_size):
+        chunk = seeds[start : start + chunk_size]
+        seed_tensor = torch.tensor(chunk, dtype=torch.long, device=matrix.device)
+        sims = torch.mm(matrix[seed_tensor], matrix.t())
+        sims[torch.arange(len(chunk), device=sims.device), seed_tensor] = -float("inf")
+        values, indices = torch.topk(sims, k=min(top_k + 1, n_features), dim=1)
+        values = values.cpu()
+        indices = indices.cpu()
+        for row, seed in enumerate(chunk):
+            neighbors = []
+            for idx, value in zip(indices[row], values[row]):
+                if len(neighbors) >= top_k:
+                    break
+                if value == -float("inf"):
+                    continue
+                neighbors.append({"feature": int(idx.item()), "cosine": float(value.item())})
+            records.append({"feature": int(seed), "neighbors": neighbors})
+
+    return {
+        "method": "seed_topk_cosine",
+        "shape": list(W_dec.shape),
+        "top_k": top_k,
+        "n_seeds": len(seeds),
+        "seed_features": seeds,
+        "neighbors": records,
+    }
+
+
 def main() -> None:
     args = parse_args()
     if args.out.exists() and not args.overwrite:
@@ -93,10 +147,23 @@ def main() -> None:
     if W_dec is None:
         raise ValueError(f"Could not load decoder matrix from {sae_path}")
 
+    seed_payload = None
     if args.method == "norm":
         payload = _norm_payload(W_dec, args.top_k)
-    else:
+    elif args.method == "topk_cosine":
         payload = _topk_cosine_payload(W_dec, args.top_k, args.chunk_size, args.device)
+    else:
+        if args.seeds is None:
+            raise ValueError("--method seed_topk_cosine requires --seeds.")
+        seed_features = _read_seed_features(args.seeds)
+        seed_payload = {"seeds": str(args.seeds), "n_requested_seeds": len(seed_features)}
+        payload = _seed_topk_cosine_payload(
+            W_dec,
+            seed_features=seed_features,
+            top_k=args.top_k,
+            chunk_size=args.chunk_size,
+            device=args.device,
+        )
     payload.update({"sae": args.sae, "layer": layer})
     write_json_atomic(args.out, payload)
     meta = build_artifact_meta(
@@ -106,6 +173,7 @@ def main() -> None:
             "sae": args.sae,
             "layer": layer,
             "method": args.method,
+            "seeds": str(args.seeds) if args.seeds else None,
             "top_k": args.top_k,
             "chunk_size": args.chunk_size,
             "device": args.device,
@@ -114,6 +182,7 @@ def main() -> None:
         inputs={
             "sae_path": str(sae_path),
             "repo_id": sae_spec.repo_id,
+            "seed_payload": seed_payload,
         },
     )
     write_json_atomic(artifact_meta_path(args.out), meta)

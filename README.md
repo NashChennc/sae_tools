@@ -59,7 +59,8 @@ The registry keeps model/SAE IDs stable with the existing Python profiles, while
 `0_generate_activations.py` uses named profiles so model paths, SAE paths, and file formats stay centralized:
 
 * `qwen3-8b-guard`: `${MODEL_ROOT}/Qwen/Qwen3Guard-Gen-8B`
-* `qwen3-8b-base`: `${MODEL_ROOT}/Qwen/Qwen3-8B`
+* `qwen3-8b`: `${MODEL_ROOT}/Qwen/Qwen3-8B`
+* `qwen3-8b-base`: compatibility alias for `qwen3-8b`
 * `qwen-scope-qwen3-8b-l0-50`: `${SAE_ROOT}/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50/layer{layer}.sae.pt`
 * `adamkarvonen`: the existing Adam Karvonen BatchTopK checkpoint path, loaded through the original JumpReLU conversion function
 
@@ -92,6 +93,30 @@ Artifacts are written to deterministic paths such as:
 artifacts/activations/model=qwen3-8b-guard/sae=qwen-scope-qwen3-8b-l0-50/layer=18/dataset=ToxicChat_prompt/split=default/n=1000/acts.pt
 ```
 
+Activation artifacts are protected by Snakemake after completion and are reused
+whenever `acts.pt` and `DONE` are present. Do not use `--forceall`, `-F`, or
+`-R activations` unless you intentionally want to regenerate expensive
+activation caches.
+
+Statistical analysis writes durable calculation and visualization artifacts per
+`model × sae × dataset × aggregation`:
+
+```text
+artifacts/analyses/stat/.../agg=max/
+  feature_table.parquet
+  summary.json
+  top_features.json
+  pareto_front.json
+  metric=auroc/metrics.json
+  plots/pr_space.color=diff.png
+  plots/pr_space.color=ratio.png
+  DONE
+```
+
+The scatter plots are saved together with `feature_table.parquet`, so the plots
+are reproducible from the underlying per-feature metrics rather than being the
+only copy of the result.
+
 Each completed artifact has sibling `meta.json` and `DONE` files. The legacy
 `0_generate_activations.py` entrypoint is still available, but it now writes the
 same deterministic artifact layout instead of timestamped `results/SAE_*` runs.
@@ -107,8 +132,34 @@ pip install -e ".[workflow]"
 snakemake -n
 
 # Run missing activation + analysis artifacts
-snakemake -j 4 --rerun-incomplete
+snakemake -j 1 --rerun-incomplete
 ```
+
+Run the same workflow across all currently idle GPUs with enough free memory:
+
+```bash
+/NAS/chennc/anaconda3/bin/conda run -n sae-tl3 \
+  python scripts/run_idle_gpu_workflow.py
+```
+
+The idle-GPU runner treats a GPU as available when `GPU-Util <= 0`, used memory
+is at or below `--max-used-mib` MiB, and free memory is at least
+`--min-free-mib` MiB. The default `--max-used-mib 512` allows the small driver
+baseline on otherwise empty cards while skipping cards with real allocations.
+It binds one Snakemake target per GPU with `CUDA_VISIBLE_DEVICES`, runs
+activations before downstream analyses, prints active target status while jobs
+are running, and writes allocation records under `runs/gpu_memory/<run_id>/`:
+
+```text
+gpu_snapshot_initial.md   # simple table of all GPUs and selection reasons
+target_plan.md            # stage/target plan
+memory_usage.md           # peak GPU memory table per target
+logs/*.log                # per-target Snakemake logs
+```
+
+Use `--dry-run` to create the tables without launching jobs. Lower
+`--min-free-mib` only when you deliberately want to use GPUs with existing
+memory allocations.
 
 ## Module Documentation
 

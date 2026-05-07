@@ -22,6 +22,7 @@ dependencies = [
     "tqdm",
     "numpy",
     "pandas",
+    "pyarrow",
     "scipy",
     "matplotlib",
     "seaborn",

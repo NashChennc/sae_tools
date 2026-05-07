@@ -12,7 +12,8 @@ It bridges `transformer_lens` (for model hooking) and `sae_lens` (for SAE encodi
 Profiles are the source of truth for model paths, SAE paths, adapter names, dimensions, and file naming.
 
 * `qwen3-8b-guard`: `${MODEL_ROOT}/Qwen/Qwen3Guard-Gen-8B`
-* `qwen3-8b-base`: `${MODEL_ROOT}/Qwen/Qwen3-8B`
+* `qwen3-8b`: `${MODEL_ROOT}/Qwen/Qwen3-8B`
+* `qwen3-8b-base`: compatibility alias for `qwen3-8b`
 * `qwen-scope-qwen3-8b-l0-50`: `${SAE_ROOT}/Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_50/layer{layer}.sae.pt`
 * `adamkarvonen`: the existing Adam Karvonen BatchTopK checkpoint, loaded through the original conversion logic
 

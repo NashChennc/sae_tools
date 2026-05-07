@@ -8,7 +8,7 @@ saes:
     top_k: 50
     d_model: 4096
     d_sae: 65536
-    compatible_models: [qwen3-8b-guard, qwen3-8b-base]
+    compatible_models: [qwen3-8b-guard, qwen3-8b]
     file_template: layer{layer}.sae.pt
     description: Qwen-Scope residual-stream TopK SAE for Qwen3-8B Base.
 
@@ -21,7 +21,7 @@ saes:
     top_k: 80
     d_model: 4096
     d_sae: 65536
-    compatible_models: [qwen3-8b-guard, qwen3-8b-base]
+    compatible_models: [qwen3-8b-guard, qwen3-8b]
     file_template: ae.pt
     description: Legacy Adam Karvonen BatchTopK checkpoint loaded through JumpReLU conversion.
 

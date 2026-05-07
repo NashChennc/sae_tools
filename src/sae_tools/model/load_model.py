@@ -58,6 +58,8 @@ def load_transformer_bridge_offline(
             torch_dtype=torch_dtype,
             **model_kwargs,
         )
+    if device != "cpu":
+        hf_model = hf_model.to(device)
 
     model = TransformerBridge.boot_transformers(
         model_name,

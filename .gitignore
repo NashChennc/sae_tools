@@ -14,6 +14,9 @@ sae_tools.egg-info/
 results/
 artifacts/
 history/
+runs/gpu_memory/*/
+!runs/gpu_memory/allocation_table.md
+.snakemake/
 *.log
 *.pt
 *.pth

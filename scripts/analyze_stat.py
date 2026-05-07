@@ -4,7 +4,13 @@ import argparse
 import json
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scipy.sparse as sp
 from scipy.stats import rankdata
 
@@ -12,20 +18,29 @@ from workflow_common import REPO_ROOT, add_registry_args, load_dataset_from_spec
 
 from sae_tools.analysis.statistical import build_sentence_feature_matrix_from_sparse, evaluate_features
 from sae_tools.model import filter_data_by_label, load_sae_predictions_pt
-from sae_tools.workflow.artifacts import artifact_meta_path, build_artifact_meta, mark_done, write_json_atomic
+from sae_tools.workflow.artifacts import (
+    artifact_meta_path,
+    build_artifact_meta,
+    mark_done,
+    stat_plot_path,
+    write_json_atomic,
+)
 
 
 LABEL_TO_BINARY = {"safe": 0, "unsafe": 1}
+SUPPORTED_METRICS = ("pearson", "auroc", "f1", "precision", "recall", "diff")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run one statistical analysis artifact.")
+    parser = argparse.ArgumentParser(description="Run statistical SAE analysis artifacts.")
     add_registry_args(parser)
     parser.add_argument("--acts", required=True, type=Path)
     parser.add_argument("--dataset", required=True, help="Dataset registry key.")
     parser.add_argument("--agg", required=True, choices=["max", "mean"])
-    parser.add_argument("--metric", required=True, choices=["pearson", "auroc", "f1", "precision", "recall", "diff"])
-    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--metric", choices=SUPPORTED_METRICS, default=None)
+    parser.add_argument("--metrics", default=None, help="Comma-separated metrics for batch mode.")
+    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--label-field", default=None)
     parser.add_argument("--top-k", type=int, default=50)
@@ -46,6 +61,19 @@ def _meta_max_samples(meta: dict) -> int | None:
     params = meta.get("params", {})
     value = params.get("max_samples", meta.get("max_samples"))
     return None if value is None else int(value)
+
+
+def _parse_metrics(args: argparse.Namespace) -> list[str]:
+    if args.metrics:
+        metrics = [item.strip() for item in args.metrics.split(",") if item.strip()]
+    elif args.metric:
+        metrics = [args.metric]
+    else:
+        raise ValueError("Provide either --metric or --metrics.")
+    unknown = sorted(set(metrics).difference(SUPPORTED_METRICS))
+    if unknown:
+        raise ValueError(f"Unsupported metrics: {unknown}. Supported metrics: {SUPPORTED_METRICS}")
+    return metrics
 
 
 def _mean_reduce(values, reduce_indices, sample_ids, feat_indices):
@@ -122,6 +150,124 @@ def _top_records(values: np.ndarray, top_k: int, extra: dict[str, np.ndarray] | 
     return records
 
 
+def _compute_feature_table(
+    X: sp.csr_matrix,
+    y: np.ndarray,
+    *,
+    top_k: int,
+    batch_size: int,
+) -> tuple[pd.DataFrame, dict]:
+    result = evaluate_features(X, y, top_k=top_k, batch_size=batch_size)
+    pearson = _pearson_scores(X, y)
+    auroc = _auroc_scores(X, y)
+    table = pd.DataFrame(
+        {
+            "feature": result.feature_indices.astype(np.int64),
+            "precision": result.precisions.astype(np.float64),
+            "recall": result.recalls.astype(np.float64),
+            "f1": result.f1_scores.astype(np.float64),
+            "activation_ratio": result.activation_ratios.astype(np.float64),
+            "diff": result.feature_diff.astype(np.float64),
+            "pearson": pearson.astype(np.float64),
+            "auroc": auroc.astype(np.float64),
+        }
+    )
+    details = {
+        "stats": result.stats,
+        "separation_score": result.separation_score,
+        "pareto_front_ids": [int(item) for item in result.pareto_front_ids],
+    }
+    return table, details
+
+
+def _top_records_from_table(table: pd.DataFrame, metric: str, top_k: int) -> list[dict]:
+    if table.empty:
+        return []
+    columns = ["feature", metric, "precision", "recall", "f1", "activation_ratio", "diff", "pearson", "auroc"]
+    records = table.nlargest(min(top_k, len(table)), metric)[columns].to_dict(orient="records")
+    for record in records:
+        record["feature"] = int(record["feature"])
+        record["score"] = float(record[metric])
+        for key, value in list(record.items()):
+            if key != "feature":
+                record[key] = float(value)
+    return records
+
+
+def _metric_payload_from_table(table: pd.DataFrame, metric: str, top_k: int, details: dict) -> dict:
+    return {
+        "top_features": _top_records_from_table(table, metric, top_k),
+        "stats": details["stats"],
+        "pareto_front_ids": details["pareto_front_ids"][:top_k],
+        "separation_score": details["separation_score"],
+    }
+
+
+def _write_parquet_atomic(table: pd.DataFrame, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    table.to_parquet(tmp, index=False)
+    tmp.replace(path)
+    return path
+
+
+def _plot_pr_space(table: pd.DataFrame, output_file: Path, *, color_by: str, title: str) -> None:
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    if color_by == "diff":
+        color_data = table["diff"]
+        color_label = "Normalized Feature Difference"
+        vmin, vmax = None, None
+    elif color_by == "ratio":
+        color_data = table["activation_ratio"]
+        color_label = "Activation Ratio"
+        vmin, vmax = 0, 1
+    else:
+        raise ValueError(f"Unsupported PR plot color: {color_by}")
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    scatter = ax.scatter(
+        x=table["recall"],
+        y=table["precision"],
+        c=color_data,
+        cmap="RdBu_r",
+        vmin=vmin,
+        vmax=vmax,
+        s=20,
+        alpha=0.6,
+        edgecolors="none",
+        rasterized=True,
+    )
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label(color_label, fontsize=12, rotation=270, labelpad=20)
+    ax.set_xlabel("Recall", fontsize=14, fontweight="bold")
+    ax.set_ylabel("Precision", fontsize=14, fontweight="bold")
+    ax.set_title(title, fontsize=16, fontweight="bold", pad=20)
+    ax.grid(True, alpha=0.3, linestyle="--")
+    ax.set_xlim([-0.02, 1.02])
+    ax.set_ylim([-0.02, 1.02])
+    ax.set_aspect("equal", "box")
+    stats_text = (
+        f"Total Features: {len(table)}\n"
+        f"F1 Mean: {table['f1'].mean():.4f}\n"
+        f"F1 Max: {table['f1'].max():.4f}"
+    )
+    ax.text(
+        0.98,
+        0.02,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="bottom",
+        horizontalalignment="right",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
+        family="monospace",
+    )
+    plt.tight_layout()
+    fig.savefig(output_file, dpi=300, bbox_inches="tight")
+    fig.savefig(output_file.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
+
+
 def _metric_payload(metric: str, X: sp.csr_matrix, y: np.ndarray, top_k: int, batch_size: int) -> dict:
     if metric == "pearson":
         values = _pearson_scores(X, y)
@@ -155,7 +301,14 @@ def _metric_payload(metric: str, X: sp.csr_matrix, y: np.ndarray, top_k: int, ba
 
 def main() -> None:
     args = parse_args()
-    if args.out.exists() and not args.overwrite:
+    metrics = _parse_metrics(args)
+    batch_mode = args.out_dir is not None
+    if not batch_mode and args.out is None:
+        raise ValueError("Single metric mode requires --out. Batch mode requires --out-dir.")
+    if batch_mode and (args.out_dir / "DONE").exists() and not args.overwrite:
+        print(f"READY {args.out_dir}")
+        return
+    if not batch_mode and args.out and args.out.exists() and not args.overwrite:
         print(f"READY {args.out}")
         return
 
@@ -163,6 +316,7 @@ def main() -> None:
     registry = resolve_registry(args)
     dataset_spec = registry.dataset(args.dataset)
     activation_meta = _read_activation_meta(args.acts)
+    activation_params = activation_meta.get("params", {})
     max_samples = args.max_samples
     if max_samples is None:
         max_samples = _meta_max_samples(activation_meta)
@@ -184,34 +338,109 @@ def main() -> None:
     )
     y = _labels(labeled_rows, label_field)
     X = _feature_matrix(sparse_data, args.agg)
-    payload = _metric_payload(args.metric, X, y, args.top_k, args.batch_size)
-    payload.update(
-        {
-            "dataset": args.dataset,
-            "label_field": label_field,
-            "aggregation": args.agg,
-            "metric": args.metric,
-            "n_labeled": int(len(labeled_rows)),
-            "n_valid_indices": int(len(valid_indices)),
-        }
-    )
+    table, details = _compute_feature_table(X, y, top_k=args.top_k, batch_size=args.batch_size)
+
+    common = {
+        "model": activation_params.get("model"),
+        "sae": activation_params.get("sae"),
+        "layer": activation_params.get("layer"),
+        "dataset": args.dataset,
+        "label_field": label_field,
+        "aggregation": args.agg,
+        "max_samples": max_samples,
+        "n_labeled": int(len(labeled_rows)),
+        "n_valid_indices": int(len(valid_indices)),
+        "top_k": args.top_k,
+    }
+
+    if batch_mode:
+        assert args.out_dir is not None
+        out_dir = args.out_dir
+        feature_table_path = out_dir / "feature_table.parquet"
+        summary_path = out_dir / "summary.json"
+        top_features_path = out_dir / "top_features.json"
+        pareto_path = out_dir / "pareto_front.json"
+        _write_parquet_atomic(table, feature_table_path)
+        write_json_atomic(
+            summary_path,
+            {
+                **common,
+                "metrics": metrics,
+                "stats": details["stats"],
+                "separation_score": details["separation_score"],
+                "feature_table": str(feature_table_path),
+            },
+        )
+        write_json_atomic(
+            top_features_path,
+            {metric: _top_records_from_table(table, metric, args.top_k) for metric in metrics},
+        )
+        write_json_atomic(pareto_path, {"feature_ids": details["pareto_front_ids"]})
+
+        for metric in metrics:
+            metric_path = out_dir / f"metric={metric}" / "metrics.json"
+            payload = _metric_payload_from_table(table, metric, args.top_k, details)
+            payload.update({**common, "metric": metric})
+            write_json_atomic(metric_path, payload)
+            write_json_atomic(
+                artifact_meta_path(metric_path),
+                build_artifact_meta(
+                    script="analyze_stat.py",
+                    repo_dir=REPO_ROOT,
+                    params={**common, "metric": metric, "output": str(metric_path)},
+                    inputs={"activation_meta": activation_meta},
+                ),
+            )
+            mark_done(metric_path)
+
+        if common.get("model") and common.get("sae") and common.get("layer") is not None:
+            plot_kwargs = {
+                "model": common["model"],
+                "sae": common["sae"],
+                "layer": int(common["layer"]),
+                "dataset": args.dataset,
+                "agg": args.agg,
+            }
+            for color in ("diff", "ratio"):
+                _plot_pr_space(
+                    table,
+                    stat_plot_path(color=color, **plot_kwargs),
+                    color_by=color,
+                    title=f"{common['model']} {args.dataset} {args.agg} PR Space",
+                )
+
+        write_json_atomic(
+            artifact_meta_path(summary_path),
+            build_artifact_meta(
+                script="analyze_stat.py",
+                repo_dir=REPO_ROOT,
+                params={**common, "metrics": metrics, "out_dir": str(out_dir)},
+                inputs={"activation_meta": activation_meta},
+            ),
+        )
+        mark_done(summary_path)
+        print(f"DONE {out_dir}")
+        return
+
+    assert args.out is not None
+    metric = metrics[0]
+    out_dir = args.out.parent.parent if args.out.parent.name.startswith("metric=") else args.out.parent
+    payload = _metric_payload_from_table(table, metric, args.top_k, details)
+    payload.update({**common, "metric": metric})
     write_json_atomic(args.out, payload)
-    meta = build_artifact_meta(
-        script="analyze_stat.py",
-        repo_dir=REPO_ROOT,
-        params={
-            "acts": str(args.acts),
-            "dataset": args.dataset,
-            "agg": args.agg,
-            "metric": args.metric,
-            "label_field": label_field,
-            "max_samples": max_samples,
-            "top_k": args.top_k,
-            "output": str(args.out),
-        },
-        inputs={"activation_meta": activation_meta},
+    _write_parquet_atomic(table, out_dir / "feature_table.parquet")
+    write_json_atomic(out_dir / "summary.json", {**common, "metrics": metrics, "stats": details["stats"]})
+    write_json_atomic(out_dir / "top_features.json", {metric: _top_records_from_table(table, metric, args.top_k)})
+    write_json_atomic(out_dir / "pareto_front.json", {"feature_ids": details["pareto_front_ids"]})
+    write_json_atomic(
+        artifact_meta_path(args.out),
+        build_artifact_meta(
+            script="analyze_stat.py",
+            repo_dir=REPO_ROOT,
+            params={**common, "metric": metric, "output": str(args.out)},
+            inputs={"activation_meta": activation_meta},
+        ),
     )
-    write_json_atomic(artifact_meta_path(args.out), meta)
     mark_done(args.out)
     print(f"DONE {args.out}")
 

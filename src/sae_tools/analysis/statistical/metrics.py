@@ -44,9 +44,9 @@ def compute_diff(X: sp.csr_matrix, y: NDArray, normalize: bool = False) -> Tuple
     neg_mask = (y == 0)
     
     if not np.any(pos_mask):
-        return -np.array(X.mean(axis=0)).flatten()
+        return -np.array(X.mean(axis=0)).flatten(), None
     if not np.any(neg_mask):
-        return np.array(X.mean(axis=0)).flatten()
+        return np.array(X.mean(axis=0)).flatten(), None
     
     X_pos = X[pos_mask]
     X_neg = X[neg_mask]

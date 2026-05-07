@@ -155,6 +155,7 @@ class AnalysisSpec:
     metrics: tuple[str, ...] = ()
     methods: tuple[str, ...] = ()
     top_k: int = 50
+    seed_limit: int = 200
     chunk_size: int = 256
 
     @classmethod
@@ -170,6 +171,7 @@ class AnalysisSpec:
             metrics=tuple(str(item) for item in _as_tuple(data.get("metrics"))),
             methods=tuple(str(item) for item in _as_tuple(data.get("methods"))),
             top_k=int(data.get("top_k", 50)),
+            seed_limit=int(data.get("seed_limit", 200)),
             chunk_size=int(data.get("chunk_size", 256)),
         )
 
@@ -190,7 +192,19 @@ class Registry:
         dataset_file = _read_yaml(directory / "datasets.yaml")
         analysis_data = _section(_read_yaml(directory / "analyses.yaml"), "analyses")
 
-        models = {key: ModelSpec.from_mapping(key, value) for key, value in model_data.items()}
+        expanded_model_data: dict[str, dict[str, Any]] = {}
+        for key, value in model_data.items():
+            if "alias_for" in value:
+                target = str(value["alias_for"])
+                if target not in model_data:
+                    raise ValueError(f"Model alias '{key}' points to unknown model '{target}'.")
+                aliased = dict(model_data[target])
+                aliased.update({k: v for k, v in value.items() if k != "alias_for"})
+                expanded_model_data[key] = aliased
+            else:
+                expanded_model_data[key] = value
+
+        models = {key: ModelSpec.from_mapping(key, value) for key, value in expanded_model_data.items()}
 
         expanded_sae_data: dict[str, dict[str, Any]] = {}
         for key, value in sae_data.items():
@@ -285,6 +299,7 @@ class ExperimentSpec:
     datasets: tuple[ExperimentDataset, ...]
     analyses: tuple[str, ...]
     activation_overwrite: bool = False
+    activation_batch_size: int = 1
 
     @classmethod
     def load(cls, path: str | Path, registry: Registry) -> "ExperimentSpec":
@@ -301,13 +316,15 @@ class ExperimentSpec:
     ) -> "ExperimentSpec":
         path = Path(path)
         datasets = tuple(_parse_experiment_dataset(item) for item in data.get("datasets", ()))
+        activation = data.get("activation") or {}
         spec = cls(
             path=path,
             models=tuple(str(item) for item in data.get("models", ())),
             saes=tuple(str(item) for item in data.get("saes", ())),
             datasets=datasets,
             analyses=tuple(str(item) for item in data.get("analyses", ())),
-            activation_overwrite=bool((data.get("activation") or {}).get("overwrite", False)),
+            activation_overwrite=bool(activation.get("overwrite", False)),
+            activation_batch_size=int(activation.get("batch_size", 1)),
         )
         spec.validate(registry)
         return spec
@@ -356,6 +373,7 @@ class ExperimentSpec:
                             "split": dataset.split_part,
                             "n": normalize_n(max_samples),
                             "max_samples": max_samples,
+                            "batch_size": self.activation_batch_size,
                         }
                     )
         return jobs
@@ -367,6 +385,14 @@ class ExperimentSpec:
                 for agg in analysis.aggregations:
                     for metric in analysis.metrics:
                         jobs.append({**base, "agg": agg, "metric": metric, "top_k": analysis.top_k})
+        return jobs
+
+    def stat_batch_jobs(self, registry: Registry) -> list[dict[str, Any]]:
+        jobs: list[dict[str, Any]] = []
+        for base in self.activation_jobs(registry):
+            for analysis in self.statistical_analyses(registry):
+                for agg in analysis.aggregations:
+                    jobs.append({**base, "agg": agg, "metrics": analysis.metrics, "top_k": analysis.top_k})
         return jobs
 
     def geometric_jobs(self, registry: Registry) -> list[dict[str, Any]]:
@@ -381,6 +407,7 @@ class ExperimentSpec:
                             "layer": sae.default_layer,
                             "method": method,
                             "top_k": analysis.top_k,
+                            "seed_limit": analysis.seed_limit,
                             "chunk_size": analysis.chunk_size,
                         }
                     )
