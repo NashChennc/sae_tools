@@ -283,7 +283,7 @@ snakemake -j 1 --rerun-incomplete \
 ## Layer Trend Analysis
 
 After stat artifacts exist for a multi-layer experiment, generate layer-trend
-plots and a Markdown report:
+plots and an HTML report:
 
 ```bash
 python scripts/analyze_layer_trends.py \
@@ -294,6 +294,7 @@ Default outputs:
 
 ```text
 report/layer_trends/experiment=response_grid/
+  layer_trends.html
   layer_trends.md
   layer_trends.csv
   missing_artifacts.csv
@@ -301,9 +302,10 @@ report/layer_trends/experiment=response_grid/
   plots/<metric>.png
 ```
 
-The report summarizes each metric's best layer by `topk_mean`, embeds one plot
-per metric, and links to the CSV files for detailed inspection. The script only
-reads existing `feature_table.parquet` files; it does not launch Snakemake or
+The HTML report summarizes each metric's best layer by `topk_mean`, embeds one
+plot per metric, and links to the CSV files for detailed inspection. The
+Markdown report is still written for compatibility. The script only reads
+existing `feature_table.parquet` files; it does not launch Snakemake or
 recompute statistical artifacts.
 
 Useful filters:
@@ -318,6 +320,26 @@ python scripts/analyze_layer_trends.py \
 ```
 
 Use `--strict` when every selected layer must have a complete stat artifact.
+
+## HTML Report Server
+
+Serve the generated reports and a read-only dashboard over local HTTP:
+
+```bash
+sae-tools-report serve \
+  --config configs/experiments/response_grid.yaml \
+  --host 127.0.0.1 \
+  --port 8765
+```
+
+Open `http://127.0.0.1:8765/` in a browser. The dashboard combines experiment
+status, artifact status, top feature lists, and Feature Activation heatmaps.
+It does not start Snakemake, recompute artifacts, or load the full model.
+
+Feature heatmaps require existing activation artifacts plus `MODEL_ROOT` and
+`DATASET_ROOT` so the service can load the local tokenizer and dataset metadata.
+If those resources are missing, the report and artifact status pages still work
+and the feature API returns a clear error.
 
 ## Troubleshooting
 

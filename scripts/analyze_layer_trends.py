@@ -17,6 +17,7 @@ import pandas as pd
 
 from workflow_common import REPO_ROOT, add_registry_args, load_repo_env, resolve_registry
 
+from sae_tools.reporting.html import write_layer_trends_html
 from sae_tools.workflow.artifacts import done_path, safe_path_part, stat_analysis_dir
 from sae_tools.workflow.registry import ExperimentSpec
 
@@ -46,6 +47,7 @@ MISSING_COLUMNS = ("experiment", "model", "sae", "dataset", "agg", "layer", "sta
 @dataclass(frozen=True)
 class LayerTrendResult:
     output_dir: Path
+    html_path: Path
     markdown_path: Path
     trend_csv: Path
     missing_csv: Path
@@ -158,6 +160,7 @@ def generate_layer_trends(
             trend_df=trend_df,
             missing_df=missing_df,
             plot_paths=(),
+            html_path=None,
             markdown_path=None,
             trend_csv=trend_csv,
             missing_csv=missing_csv,
@@ -165,6 +168,19 @@ def generate_layer_trends(
         raise FileNotFoundError(f"{len(missing_df)} selected stat artifacts are missing or incomplete. See {missing_csv}")
 
     plot_paths = tuple(_write_plots(output_dir / "plots", trend_df, metrics))
+    html_path = output_dir / "layer_trends.html"
+    write_layer_trends_html(
+        path=html_path,
+        experiment_name=experiment_name,
+        config_path=Path(config_path),
+        metrics=metrics,
+        top_k=top_k,
+        trend_df=trend_df,
+        missing_df=missing_df,
+        trend_csv=trend_csv,
+        missing_csv=missing_csv,
+        plot_paths=plot_paths,
+    )
     markdown_path = output_dir / "layer_trends.md"
     _write_markdown_report(
         path=markdown_path,
@@ -186,12 +202,14 @@ def generate_layer_trends(
         trend_df=trend_df,
         missing_df=missing_df,
         plot_paths=plot_paths,
+        html_path=html_path,
         markdown_path=markdown_path,
         trend_csv=trend_csv,
         missing_csv=missing_csv,
     )
     return LayerTrendResult(
         output_dir=output_dir,
+        html_path=html_path,
         markdown_path=markdown_path,
         trend_csv=trend_csv,
         missing_csv=missing_csv,
@@ -386,6 +404,7 @@ def _write_summary_json(
     trend_df: pd.DataFrame,
     missing_df: pd.DataFrame,
     plot_paths: Sequence[Path],
+    html_path: Path | None,
     markdown_path: Path | None,
     trend_csv: Path,
     missing_csv: Path,
@@ -399,6 +418,7 @@ def _write_summary_json(
         "trend_rows": int(len(trend_df)),
         "missing_artifacts": int(len(missing_df)),
         "outputs": {
+            "html": None if html_path is None else str(html_path),
             "markdown": None if markdown_path is None else str(markdown_path),
             "layer_trends_csv": str(trend_csv),
             "missing_artifacts_csv": str(missing_csv),
@@ -462,6 +482,7 @@ def main() -> None:
         layers=_parse_layers(args.layers),
         strict=args.strict,
     )
+    print(f"HTML {result.html_path}")
     print(f"REPORT {result.markdown_path}")
     print(f"CSV {result.trend_csv}")
     print(f"MISSING {result.missing_csv}")

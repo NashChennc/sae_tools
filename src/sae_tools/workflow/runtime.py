@@ -286,9 +286,10 @@ def scan_artifacts(
     registry_dir: str | Path,
     *,
     repo_root: str | Path | None = None,
+    artifact_root: str | os.PathLike[str] = "artifacts",
 ) -> dict[str, list[ArtifactRecord]]:
     root = default_repo_root() if repo_root is None else Path(repo_root)
-    records = workflow_target_records(config_path, registry_dir)
+    records = workflow_target_records(config_path, registry_dir, artifact_root=artifact_root)
     return {
         stage: [artifact_status(record, repo_root=root) for record in stage_records]
         for stage, stage_records in records.items()
@@ -330,11 +331,12 @@ def scan_experiments(
     registry_dir: str | Path,
     *,
     repo_root: str | Path | None = None,
+    artifact_root: str | os.PathLike[str] = "artifacts",
 ) -> list[ExperimentSummary]:
     root = default_repo_root() if repo_root is None else Path(repo_root)
     summaries: list[ExperimentSummary] = []
     for config_path in sorted(Path(experiments_dir).glob("*.yaml")):
-        summaries.append(experiment_summary(config_path, registry_dir, repo_root=root))
+        summaries.append(experiment_summary(config_path, registry_dir, repo_root=root, artifact_root=artifact_root))
     return summaries
 
 
@@ -343,12 +345,13 @@ def experiment_summary(
     registry_dir: str | Path,
     *,
     repo_root: str | Path | None = None,
+    artifact_root: str | os.PathLike[str] = "artifacts",
 ) -> ExperimentSummary:
     path = Path(config_path)
     root = default_repo_root() if repo_root is None else Path(repo_root)
     try:
         registry, experiment = load_experiment_bundle(path, registry_dir)
-        records = target_records_for_experiment(experiment=experiment, registry=registry)
+        records = target_records_for_experiment(experiment=experiment, registry=registry, artifact_root=artifact_root)
         artifact_records = {
             stage: [artifact_status(record, repo_root=root) for record in stage_records]
             for stage, stage_records in records.items()

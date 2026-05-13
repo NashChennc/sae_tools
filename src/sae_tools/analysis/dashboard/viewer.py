@@ -286,6 +286,105 @@ class FeatureActivationViewer:
             token_idx=token_idx
         )
     
+    def render_feature_activations_html(self, feature_id, threshold=0.0, max_display=10, show_full_text=False):
+        """
+        Render activation positions and contexts for a feature as a standalone HTML fragment.
+
+        This method is intentionally independent from ipywidgets so it can be reused by
+        notebook widgets, saved reports, and the HTTP report service.
+        """
+        feature_id = int(feature_id)
+        activations = self.find_feature_activations(feature_id, threshold)
+
+        num_activations = len(activations)
+        unique_samples = len(set(a['sample_idx'] for a in activations))
+        if activations:
+            max_act = max(a['activation_value'] for a in activations)
+            avg_act = sum(a['activation_value'] for a in activations) / num_activations
+        else:
+            max_act = 0
+            avg_act = 0
+
+        html_parts = [
+            "<div class='feature-activation-report'>",
+            "<h3>SAE Feature Activation Viewer</h3>",
+            f"""
+            <div style='padding: 15px; background-color: #f0f3f7; border-radius: 6px; margin-bottom: 10px;'>
+                <h4 style='margin-top: 0;'>Feature #{feature_id} Activation Statistics</h4>
+                <ul style='margin: 5px 0;'>
+                    <li><b>Total Activations:</b> {num_activations}</li>
+                    <li><b>Activated Samples:</b> {unique_samples}</li>
+                    <li><b>Max Activation:</b> {max_act:.4f}</li>
+                    <li><b>Average Activation:</b> {avg_act:.4f}</li>
+                </ul>
+            </div>
+            """,
+        ]
+
+        if not activations:
+            html_parts.append("<p style='color: #9a6700;'>No activations found (try lowering the threshold)</p>")
+            html_parts.append("</div>")
+            return "".join(html_parts)
+
+        display_count = min(max_display, len(activations))
+        html_parts.append(f"<h4>Activation List (showing first {display_count} of {num_activations}):</h4>")
+
+        for i, act in enumerate(activations[:display_count]):
+            sample_idx = act['sample_idx']
+            token_idx = act['token_idx']
+            act_val = act['activation_value']
+
+            html_parts.append(
+                f"""
+                <div style='margin: 5px 0; padding: 5px; border-radius: 5px; background-color: #fff;'>
+                    <p style='margin: 2px 0;'><b>Activation #{i+1}:</b> Sample #{sample_idx}, Token #{token_idx}, Activation: {act_val:.4f}</p>
+                </div>
+                """
+            )
+
+            if show_full_text:
+                full_tokens, full_activation_dict = self.get_full_sequence_for_sample(sample_idx, feature_id)
+                if full_tokens:
+                    full_activation_values_dict = {j: full_activation_dict.get(j, 0.0) for j in range(len(full_tokens))}
+                    html_parts.append(
+                        self._render_context_heatmap(
+                            full_tokens,
+                            token_idx,
+                            act_val,
+                            sample_idx,
+                            token_idx,
+                            activation_values_dict=full_activation_values_dict,
+                        )
+                    )
+                else:
+                    html_parts.append("<p style='color: #b42318;'>Failed to get full text</p>")
+            else:
+                context_tokens, activation_token_idx, activation_values_dict = self.get_context_for_activation(
+                    sample_idx,
+                    token_idx,
+                    context_window=15,
+                    feature_id=feature_id,
+                )
+
+                if context_tokens and activation_token_idx >= 0:
+                    html_parts.append(
+                        self._render_context_heatmap(
+                            context_tokens,
+                            activation_token_idx,
+                            act_val,
+                            sample_idx,
+                            token_idx,
+                            activation_values_dict=activation_values_dict,
+                        )
+                    )
+                else:
+                    html_parts.append("<p style='color: #b42318;'>Failed to get context</p>")
+
+            html_parts.append("<hr style='margin: 10px 0;'>")
+
+        html_parts.append("</div>")
+        return "".join(html_parts)
+
     def show_feature_activations(self, feature_id, threshold=0.0, max_display=10, show_full_text=False, container_width=None):
         """
         Show the activation positions and context for a given feature

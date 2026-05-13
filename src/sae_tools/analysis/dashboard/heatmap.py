@@ -74,6 +74,7 @@ def render_context_heatmap(token_str_list, activation_values_dict, title_templat
                 title = f"Token {i} (Act: {val:.4f})"
             else:
                 title = f"Token {i}"
+        escaped_title = html.escape(str(title), quote=True)
         
         # Special handling for newline characters
         if '\n' in token_str:
@@ -81,11 +82,11 @@ def render_context_heatmap(token_str_list, activation_values_dict, title_templat
             for part_idx, part in enumerate(parts):
                 if part:
                     escaped_part = html.escape(part)
-                    span_html = f'<span style="background-color: {bg_color}; color: {text_color}; padding: 0px; border-radius: 5px; font-family: monospace; font-size: 12px; line-height: {line_height}; white-space: normal; text-align: left; display: inline; letter-spacing: -0.5px;" title="{title}">{escaped_part}</span>'
+                    span_html = f'<span style="background-color: {bg_color}; color: {text_color}; padding: 0px; border-radius: 5px; font-family: monospace; font-size: 12px; line-height: {line_height}; white-space: normal; text-align: left; display: inline; letter-spacing: 0;" title="{escaped_title}">{escaped_part}</span>'
                     html_parts.append(span_html)
                 
                 if part_idx < len(parts) - 1:
-                    newline_placeholder = f'<span style="background-color: {bg_color}; color: {text_color}; padding: 0px; border-radius: 5px; font-family: monospace; font-size: 12px; line-height: {line_height}; white-space: normal; text-align: left; display: inline; letter-spacing: -0.5px;" title="{title}">↵</span>'
+                    newline_placeholder = f'<span style="background-color: {bg_color}; color: {text_color}; padding: 0px; border-radius: 5px; font-family: monospace; font-size: 12px; line-height: {line_height}; white-space: normal; text-align: left; display: inline; letter-spacing: 0;" title="{escaped_title}">↵</span>'
                     html_parts.append(newline_placeholder)
                     html_parts.append('<br>')
         else:
@@ -94,7 +95,7 @@ def render_context_heatmap(token_str_list, activation_values_dict, title_templat
             # If the token is a punctuation token, add a zero-width non-breaking space in front
             if is_punctuation and i > 0:
                 escaped_token = '\u2060' + escaped_token
-            span_html = f'<span style="background-color: {bg_color}; color: {text_color}; padding: 0px; border-radius: 5px; font-family: monospace; font-size: 12px; line-height: {line_height}; white-space: normal; text-align: left; display: inline; letter-spacing: -0.5px;" title="{title}">{escaped_token}</span>'
+            span_html = f'<span style="background-color: {bg_color}; color: {text_color}; padding: 0px; border-radius: 5px; font-family: monospace; font-size: 12px; line-height: {line_height}; white-space: normal; text-align: left; display: inline; letter-spacing: 0;" title="{escaped_title}">{escaped_token}</span>'
             html_parts.append(span_html)
     
     html_parts.append('</div>')

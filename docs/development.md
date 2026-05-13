@@ -25,6 +25,7 @@ src/sae_tools/
   adapters/       model, SAE, and dataset adapter registries
   analysis/       statistical, geometric, and dashboard analysis code
   model/          model loading, hooks, activation generation helpers
+  reporting/      HTML report rendering and read-only HTTP dashboard service
   workflow/       registry models, artifact path helpers, runtime scans
 
 scripts/
@@ -71,6 +72,25 @@ Important runtime helpers:
 - `query_gpus` and `classify_gpus`: parse `nvidia-smi` and idle-selection reasons.
 - `build_snakemake_dry_run_command`: build TUI dry-run commands.
 - `build_idle_runner_command`: build TUI run-missing commands.
+
+## Reporting Service Development
+
+The browser report service lives under `src/sae_tools/reporting/`.
+
+Responsibilities:
+
+- Render existing analysis outputs as HTML.
+- Serve files under `report/` through safe path checks.
+- Display experiment and artifact status from `sae_tools.workflow.runtime`.
+- Reuse `FeatureActivationViewer` for token heatmaps without requiring
+  `ipywidgets`.
+
+Non-responsibilities:
+
+- No workflow scheduling or Snakemake launches.
+- No artifact deletion or regeneration.
+- No full model or GPU loading for the default dashboard. Feature heatmaps may
+  load a local tokenizer and dataset metadata only when requested.
 
 ## Adding or Editing Registry Entries
 
@@ -174,6 +194,7 @@ Smoke checks:
 
 ```bash
 PYTHONPATH=src python -m sae_tools_tui --help
+PYTHONPATH=src python -m sae_tools.reporting --help
 python -m compileall -q src scripts
 python -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))"
 ```
@@ -183,6 +204,7 @@ The console script smoke check requires an installed editable package:
 ```bash
 pip install -e ".[tui]"
 sae-tools-tui --help
+sae-tools-report --help
 ```
 
 ## Artifact and Git Hygiene

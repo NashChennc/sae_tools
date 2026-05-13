@@ -1,6 +1,7 @@
 import importlib
 
 import pytest
+import torch
 
 from sae_tools.analysis.artifacts import (
     build_generate_activations_command,
@@ -39,6 +40,36 @@ def test_analysis_modules_are_exposed_from_canonical_namespace():
     assert importlib.import_module("sae_tools.analysis.geometric.norm")
     assert importlib.import_module("sae_tools.analysis.geometric.umap")
     assert importlib.import_module("sae_tools.analysis.dashboard.viewer")
+    assert importlib.import_module("sae_tools.reporting.server")
+
+
+def test_feature_activation_viewer_renders_standalone_html():
+    from sae_tools.analysis.dashboard.viewer import FeatureActivationViewer
+
+    class CharTokenizer:
+        def encode(self, text, add_special_tokens=False):
+            return [ord(char) for char in text]
+
+        def decode(self, token_ids):
+            return "".join(chr(token_id) for token_id in token_ids)
+
+    full_text = "User: <tag>"
+    sparse_data = {
+        "sparse_acts": torch.sparse_coo_tensor(
+            indices=torch.tensor([[6], [3]]),
+            values=torch.tensor([2.5]),
+            size=(len(full_text), 8),
+        ).coalesce(),
+        "seq_lens": torch.tensor([len(full_text)]),
+        "valid_token_idx": torch.tensor([0]),
+    }
+    viewer = FeatureActivationViewer(sparse_data, [{"prompt": "<tag>", "response": None}], CharTokenizer())
+
+    rendered = viewer.render_feature_activations_html(3, threshold=0.0, max_display=1)
+
+    assert "Feature #3 Activation Statistics" in rendered
+    assert "Activation #1" in rendered
+    assert "&lt;" in rendered
 
 
 def test_activation_artifact_check_points_to_generation_step(tmp_path):

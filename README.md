@@ -54,6 +54,7 @@ Validate the install and registry:
 python scripts/inspect_registry.py --strict
 snakemake -n
 python -m sae_tools_tui --help
+python -m sae_tools.reporting --help
 ```
 
 Launch the experiment-management TUI:
@@ -66,6 +67,13 @@ If the console script has not been generated in the active environment yet, use:
 
 ```bash
 python -m sae_tools_tui
+```
+
+Serve generated HTML reports and the read-only dashboard:
+
+```bash
+python scripts/analyze_layer_trends.py --config configs/experiments/response_grid.yaml
+sae-tools-report serve --config configs/experiments/response_grid.yaml
 ```
 
 ## Core Commands
@@ -85,6 +93,12 @@ python scripts/run_idle_gpu_workflow.py
 
 # Run only downstream stages after activations exist.
 python scripts/run_idle_gpu_workflow.py --stages stat,geometric
+
+# Generate the HTML layer-trend report.
+python scripts/analyze_layer_trends.py --config configs/experiments/response_grid.yaml
+
+# Serve reports and the browser dashboard on http://127.0.0.1:8765/.
+sae-tools-report serve --config configs/experiments/response_grid.yaml
 ```
 
 Generated artifacts, logs, Snakemake state, and per-run GPU memory logs are intentionally gitignored. Stable configuration and documentation are the source-controlled contract.

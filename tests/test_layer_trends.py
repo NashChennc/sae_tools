@@ -72,6 +72,8 @@ def test_layer_trends_generates_csv_plots_and_markdown(tmp_path):
     )
 
     assert result.markdown_path == tmp_path / "report/layer_trends/experiment=response_grid/layer_trends.md"
+    assert result.html_path == tmp_path / "report/layer_trends/experiment=response_grid/layer_trends.html"
+    assert result.html_path.exists()
     assert result.trend_csv.exists()
     assert result.missing_csv.exists()
     assert result.summary_json.exists()
@@ -90,6 +92,13 @@ def test_layer_trends_generates_csv_plots_and_markdown(tmp_path):
     assert "![f1](plots/f1.png)" in markdown
     assert "| f1 | 18 | 0.55 | qwen3-8b | qwen-scope-qwen3-8b-l0-50 | ToxicChat_response | max |" in markdown
     assert "[Layer trends CSV](layer_trends.csv)" in markdown
+
+    html = result.html_path.read_text(encoding="utf-8")
+    assert "Layer Trend Report: response_grid" in html
+    assert "plots/f1.png" in html
+    assert "layer_trends.csv" in html
+    summary = module.json.loads(result.summary_json.read_text(encoding="utf-8"))
+    assert summary["outputs"]["html"] == str(result.html_path)
 
 
 def test_layer_trends_records_missing_and_strict_fails(tmp_path):

@@ -43,6 +43,7 @@ tui = [
 
 [project.scripts]
 sae-tools-tui = "sae_tools_tui.__main__:main"
+sae-tools-report = "sae_tools.reporting.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
