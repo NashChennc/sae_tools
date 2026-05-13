@@ -11,6 +11,7 @@ from typing import Any
 
 
 _SAFE_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+DEFAULT_EXPERIMENT_ID = "standalone"
 
 
 def safe_path_part(value: Any, *, field: str = "value") -> str:
@@ -50,9 +51,26 @@ def _base(root: str | os.PathLike[str]) -> Path:
     return Path(root)
 
 
+def experiment_dir(
+    *,
+    root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
+) -> Path:
+    return _base(root) / "experiments" / safe_path_part(experiment or DEFAULT_EXPERIMENT_ID, field="experiment")
+
+
+def experiment_objects_dir(
+    *,
+    root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
+) -> Path:
+    return experiment_dir(root=root, experiment=experiment) / "objects"
+
+
 def activation_dir(
     *,
     root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
     model: str,
     sae: str,
     layer: int,
@@ -61,7 +79,7 @@ def activation_dir(
     max_samples: Any = None,
 ) -> Path:
     return (
-        _base(root)
+        experiment_objects_dir(root=root, experiment=experiment)
         / "activations"
         / f"model={safe_path_part(model, field='model')}"
         / f"sae={safe_path_part(sae, field='sae')}"
@@ -75,6 +93,7 @@ def activation_dir(
 def activation_path(
     *,
     root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
     model: str,
     sae: str,
     layer: int,
@@ -84,6 +103,7 @@ def activation_path(
 ) -> Path:
     return activation_dir(
         root=root,
+        experiment=experiment,
         model=model,
         sae=sae,
         layer=layer,
@@ -96,6 +116,7 @@ def activation_path(
 def stat_metrics_path(
     *,
     root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
     model: str,
     sae: str,
     layer: int,
@@ -105,6 +126,7 @@ def stat_metrics_path(
 ) -> Path:
     return stat_analysis_dir(
         root=root,
+        experiment=experiment,
         model=model,
         sae=sae,
         layer=layer,
@@ -116,6 +138,7 @@ def stat_metrics_path(
 def stat_analysis_dir(
     *,
     root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
     model: str,
     sae: str,
     layer: int,
@@ -123,8 +146,7 @@ def stat_analysis_dir(
     agg: str,
 ) -> Path:
     return (
-        _base(root)
-        / "analyses"
+        experiment_objects_dir(root=root, experiment=experiment)
         / "stat"
         / f"model={safe_path_part(model, field='model')}"
         / f"sae={safe_path_part(sae, field='sae')}"
@@ -166,15 +188,13 @@ def stat_plot_path(
 def geometric_path(
     *,
     root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
     sae: str,
     layer: int,
     method: str,
-    experiment: str | None = None,
 ) -> Path:
     filename = "neighbors.json" if method in {"topk_cosine", "seed_topk_cosine"} else "metrics.json"
-    base = _base(root) / "analyses" / "geometric"
-    if method == "seed_topk_cosine" and experiment:
-        base = base / f"experiment={safe_path_part(experiment, field='experiment')}"
+    base = experiment_objects_dir(root=root, experiment=experiment) / "geometric"
     return (
         base
         / f"sae={safe_path_part(sae, field='sae')}"
@@ -187,10 +207,10 @@ def geometric_path(
 def geometric_seed_path(
     *,
     root: str | os.PathLike[str] = "artifacts",
+    experiment: str | None = None,
     sae: str,
     layer: int,
     method: str = "seed_topk_cosine",
-    experiment: str | None = None,
 ) -> Path:
     return geometric_path(root=root, sae=sae, layer=layer, method=method, experiment=experiment).with_name("seeds.json")
 

@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from workflow_common import REPO_ROOT, add_registry_args, load_repo_env, require_env, resolve_registry
 
 from sae_tools.adapters.saes import get_sae_profile
+from sae_tools.experiment_store import ExperimentStore
 from sae_tools.model.load_model import load_decoder_matrix
 from sae_tools.workflow.artifacts import artifact_meta_path, build_artifact_meta, mark_done, write_json_atomic
 
@@ -187,7 +188,32 @@ def main() -> None:
     )
     write_json_atomic(artifact_meta_path(args.out), meta)
     mark_done(args.out)
+    _record_store_output(args.out, sae=args.sae, layer=layer, method=args.method)
     print(f"DONE {args.out}")
+
+
+def _record_store_output(path: Path, *, sae: str, layer: int, method: str) -> None:
+    store = ExperimentStore.from_artifact_path(path)
+    if store is None:
+        return
+    store.ensure_initialized()
+    dimensions = {"sae": sae, "layer": layer, "method": method}
+    store.record_artifact_path(
+        kind="geometric",
+        role=path.stem,
+        path=path,
+        dimensions=dimensions,
+        producer="analyze_geo.py",
+        mime="application/json",
+    )
+    store.record_artifact_path(
+        kind="geometric",
+        role="meta",
+        path=artifact_meta_path(path),
+        dimensions={**dimensions, "role": "meta"},
+        producer="analyze_geo.py",
+        mime="application/json",
+    )
 
 
 if __name__ == "__main__":

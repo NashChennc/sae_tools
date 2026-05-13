@@ -69,7 +69,7 @@ Activation artifacts are keyed by model, SAE, layer, dataset, split, and sample
 limit:
 
 ```text
-artifacts/activations/
+artifacts/experiments/<experiment>/objects/activations/
   model=qwen3-8b/
   sae=qwen-scope-qwen3-8b-l0-50/
   layer=18/
@@ -89,7 +89,7 @@ layer. Seeded geometric outputs depend on statistical top features, so they are
 also scoped by experiment:
 
 ```text
-artifacts/analyses/geometric/experiment=response_grid/...
+artifacts/experiments/response_grid/objects/geometric/...
 ```
 
 This prevents response experiments from overwriting prompt experiment seed

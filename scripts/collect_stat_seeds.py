@@ -11,6 +11,7 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from sae_tools.experiment_store import ExperimentStore
 from sae_tools.workflow.artifacts import artifact_meta_path, build_artifact_meta, mark_done, write_json_atomic
 
 
@@ -80,7 +81,36 @@ def main() -> None:
         ),
     )
     mark_done(args.out)
+    _record_store_output(args.out)
     print(f"DONE {args.out}")
+
+
+def _record_store_output(path: Path) -> None:
+    store = ExperimentStore.from_artifact_path(path)
+    if store is None:
+        return
+    store.ensure_initialized()
+    store.record_artifact_path(
+        kind="geometric",
+        role="seeds",
+        path=path,
+        dimensions={**_path_dimensions(path), "role": "seeds"},
+        producer="collect_stat_seeds.py",
+        mime="application/json",
+    )
+
+
+def _path_dimensions(path: Path) -> dict[str, object]:
+    dimensions: dict[str, object] = {}
+    for part in path.parts:
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        if key in {"sae", "method"}:
+            dimensions[key] = value
+        elif key == "layer":
+            dimensions[key] = int(value)
+    return dimensions
 
 
 if __name__ == "__main__":

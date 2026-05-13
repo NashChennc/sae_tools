@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--config", type=Path, default=Path("configs/experiments/response_grid.yaml"))
     serve.add_argument("--registry-dir", type=Path, default=None)
     serve.add_argument("--artifact-root", type=Path, default=Path("artifacts"))
-    serve.add_argument("--report-root", type=Path, default=Path("report"))
+    serve.add_argument("--report-root", type=Path, default=None, help="Legacy/static report root override.")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     return parser

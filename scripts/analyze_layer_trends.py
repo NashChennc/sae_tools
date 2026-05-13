@@ -17,8 +17,11 @@ import pandas as pd
 
 from workflow_common import REPO_ROOT, add_registry_args, load_repo_env, resolve_registry
 
+from sae_tools.experiment_store import ExperimentStore
+from sae_tools.experiment_store.manifest import ReportPageRecord
 from sae_tools.reporting.html import write_layer_trends_html
-from sae_tools.workflow.artifacts import done_path, safe_path_part, stat_analysis_dir
+from sae_tools.reporting.layout import write_layout
+from sae_tools.workflow.artifacts import done_path, experiment_dir, safe_path_part, stat_analysis_dir
 from sae_tools.workflow.registry import ExperimentSpec
 
 
@@ -62,7 +65,12 @@ def parse_args() -> argparse.Namespace:
     add_registry_args(parser)
     parser.add_argument("--config", type=Path, default=REPO_ROOT / "configs/experiments/response_grid.yaml")
     parser.add_argument("--artifact-root", type=Path, default=REPO_ROOT / "artifacts")
-    parser.add_argument("--out-root", type=Path, default=REPO_ROOT / "report")
+    parser.add_argument(
+        "--out-root",
+        type=Path,
+        default=None,
+        help="Reports directory root. Defaults to artifacts/experiments/<experiment>/reports.",
+    )
     parser.add_argument("--metrics", default=",".join(DEFAULT_METRICS), help="Comma-separated feature-table metrics.")
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--models", default=None, help="Comma-separated model keys to include.")
@@ -79,7 +87,7 @@ def generate_layer_trends(
     config_path: str | Path,
     registry_dir: str | Path,
     artifact_root: str | Path,
-    out_root: str | Path,
+    out_root: str | Path | None = None,
     metrics: Sequence[str] = DEFAULT_METRICS,
     top_k: int = 50,
     models: set[str] | None = None,
@@ -99,7 +107,11 @@ def generate_layer_trends(
     registry = resolve_registry(argparse.Namespace(registry_dir=str(registry_dir)))
     experiment = ExperimentSpec.load(config_path, registry)
     experiment_name = Path(config_path).stem
-    output_dir = Path(out_root) / "layer_trends" / f"experiment={safe_path_part(experiment_name, field='experiment')}"
+    output_dir = _report_output_dir(
+        artifact_root=artifact_root,
+        out_root=out_root,
+        experiment_name=experiment_name,
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     rows: list[dict[str, object]] = []
@@ -109,6 +121,7 @@ def generate_layer_trends(
             continue
         stat_dir = stat_analysis_dir(
             root=artifact_root,
+            experiment=experiment_name,
             model=str(job["model"]),
             sae=str(job["sae"]),
             layer=int(job["layer"]),
@@ -207,6 +220,18 @@ def generate_layer_trends(
         trend_csv=trend_csv,
         missing_csv=missing_csv,
     )
+    _record_report_store(
+        artifact_root=artifact_root,
+        experiment=experiment,
+        registry=registry,
+        experiment_name=experiment_name,
+        output_dir=output_dir,
+        html_path=html_path,
+        summary_json=summary_json,
+        trend_csv=trend_csv,
+        missing_csv=missing_csv,
+        plot_paths=plot_paths,
+    )
     return LayerTrendResult(
         output_dir=output_dir,
         html_path=html_path,
@@ -217,6 +242,75 @@ def generate_layer_trends(
         plot_paths=plot_paths,
         trends=trend_df,
         missing=missing_df,
+    )
+
+
+def _report_output_dir(
+    *,
+    artifact_root: str | Path,
+    out_root: str | Path | None,
+    experiment_name: str,
+) -> Path:
+    reports_root = (
+        Path(out_root)
+        if out_root is not None
+        else experiment_dir(root=artifact_root, experiment=experiment_name) / "reports"
+    )
+    return reports_root / "pages" / "layer_trends"
+
+
+def _record_report_store(
+    *,
+    artifact_root: str | Path,
+    experiment: ExperimentSpec,
+    registry,
+    experiment_name: str,
+    output_dir: Path,
+    html_path: Path,
+    summary_json: Path,
+    trend_csv: Path,
+    missing_csv: Path,
+    plot_paths: Sequence[Path],
+) -> None:
+    store = ExperimentStore.create(
+        artifact_root,
+        experiment=experiment,
+        registry=registry,
+        experiment_id=experiment_name,
+        overwrite=False,
+    )
+    layout_path = write_layout(store.reports_dir / "layout.json")
+    for path, role, mime in [
+        (html_path, "html", "text/html"),
+        (summary_json, "summary", "application/json"),
+        (trend_csv, "trend_csv", "text/csv"),
+        (missing_csv, "missing_csv", "text/csv"),
+    ]:
+        store.record_artifact_path(
+            kind="report",
+            role=f"layer_trends_{role}",
+            path=path,
+            producer="analyze_layer_trends.py",
+            dimensions={"page": "layer_trends", "role": role},
+            mime=mime,
+        )
+    for plot in plot_paths:
+        store.record_artifact_path(
+            kind="report",
+            role=f"layer_trends_plot_{plot.stem}",
+            path=plot,
+            producer="analyze_layer_trends.py",
+            dimensions={"page": "layer_trends", "role": f"plot_{plot.stem}"},
+            mime="image/png",
+        )
+    store.record_report(
+        ReportPageRecord(
+            page_id="layer_trends",
+            experiment_id=experiment_name,
+            path=str(_relative_to(html_path, store.root)),
+            title="Layer Trend Report",
+            layout_path=str(_relative_to(layout_path, store.root)),
+        )
     )
 
 
@@ -463,6 +557,13 @@ def _format_float(value: object) -> str:
 
 def _relative_link(path: Path, base_dir: Path) -> str:
     return os.path.relpath(path, start=base_dir).replace(os.sep, "/")
+
+
+def _relative_to(path: Path, root: Path) -> Path:
+    try:
+        return path.relative_to(root)
+    except ValueError:
+        return path
 
 
 def main() -> None:

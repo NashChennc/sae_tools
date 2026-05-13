@@ -26,7 +26,9 @@ dependencies = [
     "scipy",
     "matplotlib",
     "seaborn",
-    "ipywidgets"
+    "ipywidgets",
+    "pydantic>=2,<3",
+    "jinja2>=3,<4"
 ]
 
 [project.optional-dependencies]

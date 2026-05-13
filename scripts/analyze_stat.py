@@ -17,12 +17,12 @@ from scipy.stats import rankdata
 from workflow_common import REPO_ROOT, add_registry_args, load_dataset_from_spec, load_repo_env, require_env, resolve_max_samples, resolve_registry
 
 from sae_tools.analysis.statistical import build_sentence_feature_matrix_from_sparse, evaluate_features
+from sae_tools.experiment_store import ExperimentStore
 from sae_tools.model import filter_data_by_label, load_sae_predictions_pt
 from sae_tools.workflow.artifacts import (
     artifact_meta_path,
     build_artifact_meta,
     mark_done,
-    stat_plot_path,
     write_json_atomic,
 )
 
@@ -393,21 +393,17 @@ def main() -> None:
             )
             mark_done(metric_path)
 
+        plot_paths: list[Path] = []
         if common.get("model") and common.get("sae") and common.get("layer") is not None:
-            plot_kwargs = {
-                "model": common["model"],
-                "sae": common["sae"],
-                "layer": int(common["layer"]),
-                "dataset": args.dataset,
-                "agg": args.agg,
-            }
             for color in ("diff", "ratio"):
+                plot_path = out_dir / "plots" / f"pr_space.color={color}.png"
                 _plot_pr_space(
                     table,
-                    stat_plot_path(color=color, **plot_kwargs),
+                    plot_path,
                     color_by=color,
                     title=f"{common['model']} {args.dataset} {args.agg} PR Space",
                 )
+                plot_paths.extend([plot_path, plot_path.with_suffix(".pdf")])
 
         write_json_atomic(
             artifact_meta_path(summary_path),
@@ -419,6 +415,20 @@ def main() -> None:
             ),
         )
         mark_done(summary_path)
+        _record_store_outputs(
+            out_dir=out_dir,
+            table=table,
+            common=common,
+            metrics=metrics,
+            artifact_paths=[
+                feature_table_path,
+                summary_path,
+                top_features_path,
+                pareto_path,
+                *(out_dir / f"metric={metric}" / "metrics.json" for metric in metrics),
+                *plot_paths,
+            ],
+        )
         print(f"DONE {out_dir}")
         return
 
@@ -442,7 +452,75 @@ def main() -> None:
         ),
     )
     mark_done(args.out)
+    _record_store_outputs(
+        out_dir=out_dir,
+        table=table,
+        common=common,
+        metrics=metrics,
+        artifact_paths=[
+            args.out,
+            out_dir / "feature_table.parquet",
+            out_dir / "summary.json",
+            out_dir / "top_features.json",
+            out_dir / "pareto_front.json",
+        ],
+    )
     print(f"DONE {args.out}")
+
+
+def _record_store_outputs(
+    *,
+    out_dir: Path,
+    table: pd.DataFrame,
+    common: dict[str, object],
+    metrics: list[str],
+    artifact_paths: list[Path],
+) -> None:
+    store = ExperimentStore.from_artifact_path(out_dir)
+    if store is None:
+        return
+    model = common.get("model")
+    sae = common.get("sae")
+    layer = common.get("layer")
+    dataset = common.get("dataset")
+    agg = common.get("aggregation")
+    if not model or not sae or layer is None or not dataset or not agg:
+        return
+
+    store.ensure_initialized()
+    dimensions = {
+        "model": str(model),
+        "sae": str(sae),
+        "layer": int(layer),
+        "dataset": str(dataset),
+        "agg": str(agg),
+    }
+    store.replace_stat_features(table, **dimensions)
+    for path in artifact_paths:
+        role = path.stem
+        if path.name == "metrics.json" and path.parent.name.startswith("metric="):
+            role = path.parent.name
+        role_id = role.replace("=", "-").replace(",", "-")
+        store.record_artifact_path(
+            kind="stat",
+            role=role,
+            path=path,
+            producer="analyze_stat.py",
+            dimensions={**dimensions, "role": role_id},
+            mime=_mime_for_path(path),
+        )
+
+
+def _mime_for_path(path: Path) -> str | None:
+    if path.suffix == ".json":
+        return "application/json"
+    if path.suffix == ".parquet":
+        return "application/vnd.apache.parquet"
+    if path.suffix == ".png":
+        return "image/png"
+    if path.suffix == ".pdf":
+        return "application/pdf"
+    return None
 
 
 if __name__ == "__main__":

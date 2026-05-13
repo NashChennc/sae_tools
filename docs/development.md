@@ -24,6 +24,7 @@ PYTHONPATH=src python -m sae_tools_tui --help
 src/sae_tools/
   adapters/       model, SAE, and dataset adapter registries
   analysis/       statistical, geometric, and dashboard analysis code
+  experiment_store/  experiment bundle manifest and Parquet indexes
   model/          model loading, hooks, activation generation helpers
   reporting/      HTML report rendering and read-only HTTP dashboard service
   workflow/       registry models, artifact path helpers, runtime scans
@@ -80,7 +81,8 @@ The browser report service lives under `src/sae_tools/reporting/`.
 Responsibilities:
 
 - Render existing analysis outputs as HTML.
-- Serve files under `report/` through safe path checks.
+- Serve files under `artifacts/experiments/<experiment>/reports/` through safe
+  path checks.
 - Display experiment and artifact status from `sae_tools.workflow.runtime`.
 - Reuse `FeatureActivationViewer` for token heatmaps without requiring
   `ipywidgets`.

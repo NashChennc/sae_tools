@@ -213,6 +213,7 @@ def target_records_for_experiment(
         dataset = registry.dataset(str(job["dataset"]))
         path = activation_path(
             root=artifact_root,
+            experiment=experiment_name,
             model=str(job["model"]),
             sae=str(job["sae"]),
             layer=int(job["layer"]),
@@ -222,7 +223,7 @@ def target_records_for_experiment(
         )
         log_path = Path(
             "logs/activations/"
-            f"model={job['model']}.sae={job['sae']}.layer={job['layer']}."
+            f"experiment={experiment_name}.model={job['model']}.sae={job['sae']}.layer={job['layer']}."
             f"dataset={job['dataset']}.split={job['split']}.n={job['n']}.log"
         )
         records["activations"].append(WorkflowTarget("activations", path, log_path, job))
@@ -231,6 +232,7 @@ def target_records_for_experiment(
         path = (
             stat_analysis_dir(
                 root=artifact_root,
+                experiment=experiment_name,
                 model=str(job["model"]),
                 sae=str(job["sae"]),
                 layer=int(job["layer"]),
@@ -241,7 +243,7 @@ def target_records_for_experiment(
         )
         log_path = Path(
             "logs/stat_batch/"
-            f"model={job['model']}.sae={job['sae']}.layer={job['layer']}."
+            f"experiment={experiment_name}.model={job['model']}.sae={job['sae']}.layer={job['layer']}."
             f"dataset={job['dataset']}.agg={job['agg']}.log"
         )
         records["stat"].append(WorkflowTarget("stat", path, log_path, job))
@@ -250,10 +252,10 @@ def target_records_for_experiment(
         method = str(job["method"])
         path = geometric_path(
             root=artifact_root,
+            experiment=experiment_name,
             sae=str(job["sae"]),
             layer=int(job["layer"]),
             method=method,
-            experiment=experiment_name if method == "seed_topk_cosine" else None,
         )
         if method == "seed_topk_cosine":
             log_path = Path(
@@ -264,7 +266,7 @@ def target_records_for_experiment(
         else:
             log_path = Path(
                 "logs/geometric/"
-                f"sae={job['sae']}.layer={job['layer']}.method={method}.filename={path.name}.log"
+                f"experiment={experiment_name}.sae={job['sae']}.layer={job['layer']}.method={method}.filename={path.name}.log"
             )
         records["geometric"].append(WorkflowTarget("geometric", path, log_path, job))
     return records

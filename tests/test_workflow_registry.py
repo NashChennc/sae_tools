@@ -86,8 +86,8 @@ def test_deterministic_artifact_paths_are_normalized():
         max_samples=1000,
     )
     assert acts == Path(
-        "artifacts/activations/model=qwen3-8b-guard/sae=qwen-scope-qwen3-8b-l0-50/"
-        "layer=18/dataset=ToxicChat_prompt/split=default/n=1000/acts.pt"
+        "artifacts/experiments/standalone/objects/activations/model=qwen3-8b-guard/"
+        "sae=qwen-scope-qwen3-8b-l0-50/layer=18/dataset=ToxicChat_prompt/split=default/n=1000/acts.pt"
     )
     assert stat_metrics_path(
         model="qwen3-8b-guard",
@@ -97,8 +97,8 @@ def test_deterministic_artifact_paths_are_normalized():
         agg="max",
         metric="auroc",
     ) == Path(
-        "artifacts/analyses/stat/model=qwen3-8b-guard/sae=qwen-scope-qwen3-8b-l0-50/"
-        "layer=18/dataset=ToxicChat_prompt/agg=max/metric=auroc/metrics.json"
+        "artifacts/experiments/standalone/objects/stat/model=qwen3-8b-guard/"
+        "sae=qwen-scope-qwen3-8b-l0-50/layer=18/dataset=ToxicChat_prompt/agg=max/metric=auroc/metrics.json"
     )
     stat_dir = stat_analysis_dir(
         model="qwen3-8b-guard",
@@ -129,7 +129,7 @@ def test_deterministic_artifact_paths_are_normalized():
         method="seed_topk_cosine",
         experiment="response_grid",
     ) == Path(
-        "artifacts/analyses/geometric/experiment=response_grid/"
+        "artifacts/experiments/response_grid/objects/geometric/"
         "sae=qwen-scope-qwen3-8b-l0-50/layer=18/method=seed_topk_cosine/neighbors.json"
     )
     assert done_path(acts) == acts.with_name("DONE")

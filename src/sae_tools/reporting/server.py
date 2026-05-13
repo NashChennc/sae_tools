@@ -15,7 +15,7 @@ import pandas as pd
 
 from sae_tools.adapters.datasets import get_adapter
 from sae_tools.model import load_sae_predictions_pt
-from sae_tools.workflow.artifacts import activation_path, done_path, safe_path_part, stat_analysis_dir
+from sae_tools.workflow.artifacts import activation_path, done_path, experiment_dir, safe_path_part, stat_analysis_dir
 from sae_tools.workflow.registry import ExperimentSpec, Registry
 from sae_tools.workflow.runtime import ArtifactRecord, default_repo_root, scan_artifacts, scan_experiments
 
@@ -40,17 +40,24 @@ class ReportServerConfig:
         config_path: str | Path = "configs/experiments/response_grid.yaml",
         registry_dir: str | Path | None = None,
         artifact_root: str | Path = "artifacts",
-        report_root: str | Path = "report",
+        report_root: str | Path | None = None,
         host: str = "127.0.0.1",
         port: int = 8765,
     ) -> "ReportServerConfig":
         root = default_repo_root() if repo_root is None else Path(repo_root)
+        config_resolved = _resolve_under(root, config_path)
+        artifact_resolved = _resolve_under(root, artifact_root)
+        report_resolved = (
+            _resolve_under(root, report_root)
+            if report_root is not None
+            else experiment_dir(root=artifact_resolved, experiment=config_resolved.stem) / "reports"
+        )
         return cls(
             repo_root=root.resolve(),
-            config_path=_resolve_under(root, config_path),
+            config_path=config_resolved,
             registry_dir=_resolve_under(root, registry_dir or "configs/registry"),
-            artifact_root=_resolve_under(root, artifact_root),
-            report_root=_resolve_under(root, report_root),
+            artifact_root=artifact_resolved,
+            report_root=report_resolved,
             host=host,
             port=int(port),
         )
@@ -171,6 +178,7 @@ class ReportData:
         metric = safe_path_part(metric, field="metric")
         stat_dir = stat_analysis_dir(
             root=self.config.artifact_root,
+            experiment=self.experiment_name,
             model=selection.model,
             sae=selection.sae,
             layer=selection.layer,
@@ -235,6 +243,7 @@ class ReportData:
         max_samples = experiment.dataset_max_samples(registry, selection.dataset)
         acts_path = activation_path(
             root=self.config.artifact_root,
+            experiment=self.experiment_name,
             model=selection.model,
             sae=selection.sae,
             layer=selection.layer,
@@ -283,7 +292,7 @@ def serve_report(config: ReportServerConfig) -> None:
 
 def render_index(config: ReportServerConfig, data: ReportData) -> str:
     experiment_name = data.experiment_name
-    html_report = config.report_root / "layer_trends" / f"experiment={experiment_name}" / "layer_trends.html"
+    html_report = config.report_root / "pages" / "layer_trends" / "layer_trends.html"
     report_link = f"/layer-trends/{urllib.parse.quote(experiment_name)}/" if html_report.exists() else "#"
     report_status = "done" if html_report.exists() else "missing"
     rows = data.experiment_summaries()
@@ -291,7 +300,7 @@ def render_index(config: ReportServerConfig, data: ReportData) -> str:
 <section class="grid">
   <section class="card"><div class="label">Selected experiment</div><div class="value">{escape(experiment_name)}</div></section>
   <section class="card"><div class="label">HTML report</div><div class="value">{status_badge(report_status)}</div></section>
-  <section class="card"><div class="label">Report root</div><div class="value">{escape(config.report_root)}</div></section>
+  <section class="card"><div class="label">Store reports</div><div class="value">{escape(config.report_root)}</div></section>
 </section>
 <section class="panel">
   <h2>Selected Report</h2>
@@ -386,7 +395,9 @@ def _make_handler(config: ReportServerConfig, data: ReportData):
                 self.send_header("Location", f"/layer-trends/{urllib.parse.quote(experiment)}/")
                 self.end_headers()
                 return
-            base = config.report_root / "layer_trends" / f"experiment={experiment}"
+            base = experiment_dir(root=config.artifact_root, experiment=experiment) / "reports" / "pages" / "layer_trends"
+            if not base.exists():
+                base = config.report_root / "layer_trends" / f"experiment={experiment}"
             target = _safe_join(base, Path(*rest))
             if target.is_dir():
                 target = _safe_join(base, Path(*rest) / "layer_trends.html")

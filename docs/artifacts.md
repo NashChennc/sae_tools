@@ -1,87 +1,108 @@
 # Artifacts
 
-Artifacts are part of the workflow contract. Do not rely on timestamped output
-directories for experiments that need reuse.
+Artifacts are stored as experiment bundles so config, workflow data, indexes,
+and rendered HTML reports can be managed from one root:
+
+```text
+artifacts/experiments/<experiment>/
+  manifest.json
+  config.resolved.yaml
+  registry.snapshot.json
+  index/
+    jobs.parquet
+    artifacts.parquet
+    features.parquet
+    summaries.parquet
+    reports.parquet
+  objects/
+  reports/
+    layout.json
+    pages/
+```
+
+`objects/` keeps native large artifacts. `index/` keeps compact Parquet tables
+used by the dashboard and report code. `reports/layout.json` describes report
+pages independently from the rendering code.
 
 ## Activation Cache
 
 Activation output:
 
 ```text
-artifacts/activations/model=<model>/sae=<sae>/layer=<layer>/
+artifacts/experiments/<experiment>/objects/activations/
+  model=<model>/sae=<sae>/layer=<layer>/
   dataset=<dataset>/split=<split>/n=<max_samples>/
     acts.pt
     meta.json
     DONE
 ```
 
-`acts.pt` contains:
-
-```text
-sparse_acts
-valid_token_idx
-seq_lens
-shape
-```
-
+`acts.pt` contains `sparse_acts`, `valid_token_idx`, `seq_lens`, and `shape`.
 `meta.json` records model, SAE, layer, dataset, data type, sample count, script,
-git commit, input hash, and output path. `DONE` is the completion marker used
-by the workflow and UI.
+git commit, input hash, and output path.
 
 ## Statistical Outputs
 
 For each dataset and aggregation:
 
 ```text
-artifacts/analyses/stat/model=<model>/sae=<sae>/layer=<layer>/
-  dataset=<dataset>/agg=<agg>/
+artifacts/experiments/<experiment>/objects/stat/
+  model=<model>/sae=<sae>/layer=<layer>/dataset=<dataset>/agg=<agg>/
     feature_table.parquet
     summary.json
     top_features.json
     pareto_front.json
     plots/pr_space.color=diff.png
-    plots/pr_space.color=diff.pdf
     plots/pr_space.color=ratio.png
-    plots/pr_space.color=ratio.pdf
-    metric=pearson/metrics.json
-    metric=auroc/metrics.json
-    metric=f1/metrics.json
+    metric=<metric>/metrics.json
     DONE
 ```
 
-`feature_table.parquet` is the durable source for scatter plots. The plot files
-are saved for inspection, but the table is the reproducible calculation output.
+`feature_table.parquet` is the durable source for plots and for
+`index/features.parquet`.
 
 ## Geometric Outputs
 
-SAE-intrinsic outputs:
-
 ```text
-artifacts/analyses/geometric/sae=<sae>/layer=<layer>/method=norm/metrics.json
-```
-
-Experiment-scoped seeded outputs:
-
-```text
-artifacts/analyses/geometric/experiment=<experiment>/sae=<sae>/layer=<layer>/
-  method=seed_topk_cosine/
+artifacts/experiments/<experiment>/objects/geometric/
+  sae=<sae>/layer=<layer>/method=norm/metrics.json
+  sae=<sae>/layer=<layer>/method=topk_cosine/neighbors.json
+  sae=<sae>/layer=<layer>/method=seed_topk_cosine/
     seeds.json
     neighbors.json
-    meta.json
-    DONE
 ```
 
-`seed_topk_cosine` depends on statistical top features, so the experiment name
-is part of the path.
+All geometric outputs are experiment scoped so seeded neighbor runs cannot
+overwrite results from another experiment.
+
+## Reports
+
+HTML reports are written under the same bundle:
+
+```text
+artifacts/experiments/<experiment>/reports/
+  layout.json
+  pages/layer_trends/
+    layer_trends.html
+    layer_trends.md
+    layer_trends.csv
+    missing_artifacts.csv
+    summary.json
+    plots/*.png
+```
+
+Serve them with:
+
+```bash
+python -m sae_tools.reporting serve --config configs/experiments/response_grid.yaml
+```
 
 ## Reuse Rules
 
 - Existing activation artifacts are reused when `acts.pt` and `DONE` exist.
-- Do not use `snakemake -F`, `--forceall`, or `-R activations` unless you want
-  to regenerate activation caches.
 - If a run is interrupted, rerun with `--rerun-incomplete`.
 - If only downstream analyses failed, rerun the GPU runner with
   `--stages stat,geometric`.
 
 Generated `artifacts/`, `logs/`, `.snakemake/`, and per-run memory logs are
-gitignored. Keep only stable docs and configuration in git.
+gitignored.

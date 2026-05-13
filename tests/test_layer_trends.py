@@ -27,6 +27,7 @@ def _load_layer_trends():
 def _write_feature_table(module, artifact_root: Path, *, layer: int, f1_values: list[float]) -> Path:
     out_dir = stat_analysis_dir(
         root=artifact_root,
+        experiment="response_grid",
         model="qwen3-8b",
         sae="qwen-scope-qwen3-8b-l0-50",
         layer=layer,
@@ -62,7 +63,6 @@ def test_layer_trends_generates_csv_plots_and_markdown(tmp_path):
         config_path="configs/experiments/response_grid.yaml",
         registry_dir="configs/registry",
         artifact_root=artifact_root,
-        out_root=tmp_path / "report",
         metrics=("f1",),
         top_k=2,
         saes={"qwen-scope-qwen3-8b-l0-50"},
@@ -71,13 +71,14 @@ def test_layer_trends_generates_csv_plots_and_markdown(tmp_path):
         layers={15, 18},
     )
 
-    assert result.markdown_path == tmp_path / "report/layer_trends/experiment=response_grid/layer_trends.md"
-    assert result.html_path == tmp_path / "report/layer_trends/experiment=response_grid/layer_trends.html"
+    report_dir = artifact_root / "experiments/response_grid/reports/pages/layer_trends"
+    assert result.markdown_path == report_dir / "layer_trends.md"
+    assert result.html_path == report_dir / "layer_trends.html"
     assert result.html_path.exists()
     assert result.trend_csv.exists()
     assert result.missing_csv.exists()
     assert result.summary_json.exists()
-    assert result.plot_paths == (tmp_path / "report/layer_trends/experiment=response_grid/plots/f1.png",)
+    assert result.plot_paths == (report_dir / "plots/f1.png",)
     assert result.plot_paths[0].exists()
     assert result.missing.empty
     assert len(result.trends) == 2
@@ -110,7 +111,6 @@ def test_layer_trends_records_missing_and_strict_fails(tmp_path):
         config_path="configs/experiments/response_grid.yaml",
         registry_dir="configs/registry",
         artifact_root=artifact_root,
-        out_root=tmp_path / "report",
         metrics=("f1",),
         top_k=2,
         saes={"qwen-scope-qwen3-8b-l0-50"},
@@ -132,7 +132,6 @@ def test_layer_trends_records_missing_and_strict_fails(tmp_path):
             config_path="configs/experiments/response_grid.yaml",
             registry_dir="configs/registry",
             artifact_root=artifact_root,
-            out_root=tmp_path / "strict-report",
             metrics=("f1",),
             top_k=2,
             saes={"qwen-scope-qwen3-8b-l0-50"},
@@ -141,7 +140,7 @@ def test_layer_trends_records_missing_and_strict_fails(tmp_path):
             layers={15, 18},
             strict=True,
         )
-    assert (tmp_path / "strict-report/layer_trends/experiment=response_grid/missing_artifacts.csv").exists()
+    assert (artifact_root / "experiments/response_grid/reports/pages/layer_trends/missing_artifacts.csv").exists()
 
 
 def test_layer_trends_filters_and_help_smoke(tmp_path):
@@ -154,7 +153,6 @@ def test_layer_trends_filters_and_help_smoke(tmp_path):
         config_path="configs/experiments/response_grid.yaml",
         registry_dir="configs/registry",
         artifact_root=artifact_root,
-        out_root=tmp_path / "report",
         metrics=("f1", "auroc"),
         top_k=1,
         models={"qwen3-8b"},

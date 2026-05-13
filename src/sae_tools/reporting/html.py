@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 import pandas as pd
+from jinja2 import Environment, select_autoescape
 
 
 BASE_CSS = """
@@ -85,6 +86,37 @@ button.secondary { background: #fff; color: var(--accent); }
 pre { white-space: pre-wrap; background: #111827; color: #f9fafb; padding: 12px; border-radius: 8px; overflow-x: auto; }
 """
 
+_HTML_ENV = Environment(autoescape=select_autoescape(default=True))
+_PAGE_TEMPLATE = _HTML_ENV.from_string(
+    """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>{{ css | safe }}</style>
+  {{ extra_head | safe }}
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div>
+        <h1>{{ title }}</h1>
+        {% if subtitle %}<p class="subtitle">{{ subtitle }}</p>{% endif %}
+      </div>
+      <nav class="nav">
+        <a href="/">Reports</a>
+        <a href="/dashboard">Dashboard</a>
+      </nav>
+    </div>
+    {{ body | safe }}
+  </main>
+  {{ scripts | safe }}
+</body>
+</html>
+"""
+)
+
 
 def escape(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
@@ -98,37 +130,14 @@ def html_page(
     scripts: str = "",
     extra_head: str = "",
 ) -> str:
-    nav = """
-    <nav class="nav">
-      <a href="/">Reports</a>
-      <a href="/dashboard">Dashboard</a>
-    </nav>
-    """
-    subtitle_html = f'<p class="subtitle">{escape(subtitle)}</p>' if subtitle else ""
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{escape(title)}</title>
-  <style>{BASE_CSS}</style>
-  {extra_head}
-</head>
-<body>
-  <main class="shell">
-    <div class="topbar">
-      <div>
-        <h1>{escape(title)}</h1>
-        {subtitle_html}
-      </div>
-      {nav}
-    </div>
-    {body}
-  </main>
-  {scripts}
-</body>
-</html>
-"""
+    return _PAGE_TEMPLATE.render(
+        title=str(title),
+        subtitle=str(subtitle),
+        body=body,
+        scripts=scripts,
+        extra_head=extra_head,
+        css=BASE_CSS,
+    )
 
 
 def status_badge(status: object) -> str:

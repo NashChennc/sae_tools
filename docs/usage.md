@@ -213,7 +213,8 @@ runs/gpu_memory/<run_id>/
 Activation cache:
 
 ```text
-artifacts/activations/model=<model>/sae=<sae>/layer=<layer>/
+artifacts/experiments/<experiment>/objects/activations/
+  model=<model>/sae=<sae>/layer=<layer>/
   dataset=<dataset>/split=<split>/n=<max_samples>/
     acts.pt
     meta.json
@@ -223,7 +224,8 @@ artifacts/activations/model=<model>/sae=<sae>/layer=<layer>/
 Statistical output:
 
 ```text
-artifacts/analyses/stat/model=<model>/sae=<sae>/layer=<layer>/
+artifacts/experiments/<experiment>/objects/stat/
+  model=<model>/sae=<sae>/layer=<layer>/
   dataset=<dataset>/agg=<agg>/
     feature_table.parquet
     summary.json
@@ -237,8 +239,8 @@ artifacts/analyses/stat/model=<model>/sae=<sae>/layer=<layer>/
 Geometric output:
 
 ```text
-artifacts/analyses/geometric/sae=<sae>/layer=<layer>/method=norm/metrics.json
-artifacts/analyses/geometric/experiment=<experiment>/sae=<sae>/layer=<layer>/method=seed_topk_cosine/neighbors.json
+artifacts/experiments/<experiment>/objects/geometric/sae=<sae>/layer=<layer>/method=norm/metrics.json
+artifacts/experiments/<experiment>/objects/geometric/sae=<sae>/layer=<layer>/method=seed_topk_cosine/neighbors.json
 ```
 
 Status meanings:
@@ -277,7 +279,7 @@ Run one statistical analysis target through Snakemake by target path:
 
 ```bash
 snakemake -j 1 --rerun-incomplete \
-  artifacts/analyses/stat/model=qwen3-8b/sae=qwen-scope-qwen3-8b-l0-50/layer=18/dataset=ToxicChat_prompt/agg=max/DONE
+  artifacts/experiments/response_grid/objects/stat/model=qwen3-8b/sae=qwen-scope-qwen3-8b-l0-50/layer=18/dataset=ToxicChat_prompt/agg=max/DONE
 ```
 
 ## Layer Trend Analysis
@@ -293,13 +295,15 @@ python scripts/analyze_layer_trends.py \
 Default outputs:
 
 ```text
-report/layer_trends/experiment=response_grid/
-  layer_trends.html
-  layer_trends.md
-  layer_trends.csv
-  missing_artifacts.csv
-  summary.json
-  plots/<metric>.png
+artifacts/experiments/response_grid/reports/
+  layout.json
+  pages/layer_trends/
+    layer_trends.html
+    layer_trends.md
+    layer_trends.csv
+    missing_artifacts.csv
+    summary.json
+    plots/<metric>.png
 ```
 
 The HTML report summarizes each metric's best layer by `topk_mean`, embeds one

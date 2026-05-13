@@ -8,6 +8,7 @@ from workflow_common import REPO_ROOT, add_registry_args, load_repo_env, require
 from sae_tools.adapters.datasets import get_adapter
 from sae_tools.adapters.models import load_model_from_profile
 from sae_tools.adapters.saes import get_sae_profile, load_sae_adapter
+from sae_tools.experiment_store import ExperimentStore
 from sae_tools.model import residual_post_hook_name
 from sae_tools.model.run import generate_activations
 from sae_tools.workflow.artifacts import (
@@ -30,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--artifact-root", type=Path, default=REPO_ROOT / "artifacts")
+    parser.add_argument("--experiment", default=None, help="Experiment id for default artifact paths.")
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--device", default=None)
@@ -54,6 +56,7 @@ def main() -> None:
     max_samples = resolve_max_samples(args.max_samples, dataset_spec)
     output = args.out or activation_path(
         root=args.artifact_root,
+        experiment=args.experiment,
         model=args.model,
         sae=args.sae,
         layer=layer,
@@ -139,7 +142,56 @@ def main() -> None:
     )
     write_json_atomic(artifact_meta_path(output), meta)
     mark_done(output)
+    _record_store_output(
+        output=output,
+        model=args.model,
+        sae=args.sae,
+        layer=layer,
+        dataset=args.dataset,
+        split=dataset_spec.split,
+        max_samples=max_samples,
+    )
     print(f"DONE {output}")
+
+
+def _record_store_output(
+    *,
+    output: Path,
+    model: str,
+    sae: str,
+    layer: int,
+    dataset: str,
+    split: str | None,
+    max_samples: int | None,
+) -> None:
+    store = ExperimentStore.from_artifact_path(output)
+    if store is None:
+        return
+    store.ensure_initialized()
+    dimensions = {
+        "model": model,
+        "sae": sae,
+        "layer": layer,
+        "dataset": dataset,
+        "split": split,
+        "max_samples": max_samples,
+    }
+    store.record_artifact_path(
+        kind="activations",
+        role="acts",
+        path=output,
+        dimensions=dimensions,
+        producer="gen_activations_one.py",
+        mime="application/vnd.pytorch",
+    )
+    store.record_artifact_path(
+        kind="activations",
+        role="meta",
+        path=artifact_meta_path(output),
+        dimensions={**dimensions, "role": "meta"},
+        producer="gen_activations_one.py",
+        mime="application/json",
+    )
 
 
 if __name__ == "__main__":

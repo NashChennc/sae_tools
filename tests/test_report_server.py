@@ -17,10 +17,11 @@ def test_report_cli_parser_defaults():
     assert args.host == "127.0.0.1"
     assert args.port == 8765
     assert args.config == Path("configs/experiments/response_grid.yaml")
+    assert args.report_root is None
 
 
 def test_report_server_routes_index_dashboard_and_layer_report(tmp_path):
-    report_dir = tmp_path / "report/layer_trends/experiment=response_grid"
+    report_dir = tmp_path / "artifacts/experiments/response_grid/reports/pages/layer_trends"
     report_dir.mkdir(parents=True)
     (report_dir / "layer_trends.html").write_text("<html><body>layer report</body></html>", encoding="utf-8")
 
@@ -28,7 +29,6 @@ def test_report_server_routes_index_dashboard_and_layer_report(tmp_path):
         repo_root=Path.cwd(),
         config_path="configs/experiments/response_grid.yaml",
         artifact_root=tmp_path / "artifacts",
-        report_root=tmp_path / "report",
     )
     data = ReportData(config)
     index = render_index(config, data)
@@ -47,6 +47,7 @@ def test_report_server_routes_index_dashboard_and_layer_report(tmp_path):
 def test_report_features_api_reads_top_features(tmp_path):
     stat_dir = stat_analysis_dir(
         root=tmp_path / "artifacts",
+        experiment="response_grid",
         model="qwen3-8b",
         sae="qwen-scope-qwen3-8b-l0-50",
         layer=18,
@@ -62,7 +63,6 @@ def test_report_features_api_reads_top_features(tmp_path):
         repo_root=Path.cwd(),
         config_path="configs/experiments/response_grid.yaml",
         artifact_root=tmp_path / "artifacts",
-        report_root=tmp_path / "report",
     )
 
     payload = ReportData(config).features(

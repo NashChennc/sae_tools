@@ -24,6 +24,7 @@ def build_generate_activations_command(
     batch_size: int = 1,
     device: str = "cuda",
     dtype: str = "bfloat16",
+    experiment: str | None = None,
 ) -> str:
     """Build a copy-pasteable single-artifact activation generation command."""
     parts = [
@@ -41,6 +42,7 @@ def build_generate_activations_command(
         str(
             activation_path(
                 root=output_dir,
+                experiment=experiment,
                 model=model_profile,
                 sae=sae_profile,
                 layer=layer,
@@ -57,6 +59,8 @@ def build_generate_activations_command(
     ]
     if max_samples is not None:
         parts.extend(["--max-samples", str(max_samples)])
+    if experiment is not None:
+        parts.extend(["--experiment", experiment])
     del dataset_config
     return " ".join(shlex.quote(part) for part in parts)
 
@@ -86,11 +90,13 @@ def find_latest_activation_file(
     layer: int,
     predictions_dir: str = "predictions",
     generate_command: str | None = None,
+    experiment: str | None = None,
 ) -> Path:
     """Find a deterministic activation file, with legacy timestamp fallback."""
     base = Path(results_dir).expanduser()
     deterministic = activation_path(
         root=base,
+        experiment=experiment,
         model=model_profile,
         sae=sae_profile,
         layer=layer,
@@ -103,6 +109,9 @@ def find_latest_activation_file(
     deterministic_candidates = list(
         (
             base
+            / "experiments"
+            / (experiment or "standalone")
+            / "objects"
             / "activations"
             / f"model={model_profile}"
             / f"sae={sae_profile}"
@@ -112,6 +121,33 @@ def find_latest_activation_file(
     )
     if deterministic_candidates:
         return max(deterministic_candidates, key=lambda path: path.stat().st_mtime)
+
+    legacy_deterministic = (
+        base
+        / "activations"
+        / f"model={model_profile}"
+        / f"sae={sae_profile}"
+        / f"layer={layer}"
+        / f"dataset={dataset_name}"
+        / "split=default"
+        / "n=all"
+        / "acts.pt"
+    )
+    if legacy_deterministic.exists():
+        return legacy_deterministic
+
+    legacy_deterministic_candidates = list(
+        (
+            base
+            / "activations"
+            / f"model={model_profile}"
+            / f"sae={sae_profile}"
+            / f"layer={layer}"
+            / f"dataset={dataset_name}"
+        ).glob("split=*/n=*/acts.pt")
+    )
+    if legacy_deterministic_candidates:
+        return max(legacy_deterministic_candidates, key=lambda path: path.stat().st_mtime)
 
     pattern = activation_run_pattern(model_profile, sae_profile, layer)
     candidates = list(base.glob(f"{pattern}/{predictions_dir}/{dataset_name}.pt"))

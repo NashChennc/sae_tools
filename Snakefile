@@ -44,6 +44,7 @@ def _activation_input(wildcards):
     max_samples = EXPERIMENT.dataset_max_samples(REGISTRY, wildcards.dataset)
     return _text(
         activation_path(
+            experiment=wildcards.experiment,
             model=wildcards.model,
             sae=wildcards.sae,
             layer=int(wildcards.layer),
@@ -57,6 +58,7 @@ def _activation_input(wildcards):
 ACTIVATION_TARGETS = [
     _text(
         activation_path(
+            experiment=EXPERIMENT_NAME,
             model=job["model"],
             sae=job["sae"],
             layer=job["layer"],
@@ -71,6 +73,7 @@ ACTIVATION_TARGETS = [
 STAT_TARGETS = [
     _text(
         stat_metrics_path(
+            experiment=EXPERIMENT_NAME,
             model=job["model"],
             sae=job["sae"],
             layer=job["layer"],
@@ -87,6 +90,7 @@ STAT_BATCH_JOBS = EXPERIMENT.stat_batch_jobs(REGISTRY)
 STAT_BATCH_TARGETS = [
     _text(
         stat_analysis_dir(
+            experiment=EXPERIMENT_NAME,
             model=job["model"],
             sae=job["sae"],
             layer=job["layer"],
@@ -101,10 +105,10 @@ STAT_BATCH_TARGETS = [
 GEO_TARGETS = [
     _text(
         geometric_path(
+            experiment=EXPERIMENT_NAME,
             sae=job["sae"],
             layer=job["layer"],
             method=job["method"],
-            experiment=EXPERIMENT_NAME if job["method"] == "seed_topk_cosine" else None,
         )
     )
     for job in EXPERIMENT.geometric_jobs(REGISTRY)
@@ -118,9 +122,9 @@ rule all:
 
 rule activations:
     output:
-        acts=protected("artifacts/activations/model={model}/sae={sae}/layer={layer}/dataset={dataset}/split={split}/n={n}/acts.pt")
+        acts=protected("artifacts/experiments/{experiment}/objects/activations/model={model}/sae={sae}/layer={layer}/dataset={dataset}/split={split}/n={n}/acts.pt")
     log:
-        "logs/activations/model={model}.sae={sae}.layer={layer}.dataset={dataset}.split={split}.n={n}.log"
+        "logs/activations/experiment={experiment}.model={model}.sae={sae}.layer={layer}.dataset={dataset}.split={split}.n={n}.log"
     params:
         max_samples=lambda w: _cli_n(w.n),
         batch_size=lambda w: EXPERIMENT.activation_batch_size,
@@ -143,15 +147,16 @@ rule stat_analysis_batch:
     input:
         acts=_activation_input
     output:
-        done="artifacts/analyses/stat/model={model}/sae={sae}/layer={layer}/dataset={dataset}/agg={agg}/DONE"
+        done="artifacts/experiments/{experiment}/objects/stat/model={model}/sae={sae}/layer={layer}/dataset={dataset}/agg={agg}/DONE"
     log:
-        "logs/stat_batch/model={model}.sae={sae}.layer={layer}.dataset={dataset}.agg={agg}.log"
+        "logs/stat_batch/experiment={experiment}.model={model}.sae={sae}.layer={layer}.dataset={dataset}.agg={agg}.log"
     params:
         max_samples=lambda w: _cli_n(EXPERIMENT.dataset_max_samples(REGISTRY, w.dataset)),
         metrics=lambda w: ",".join(_stat_metrics(w.agg)),
         top_k=lambda w: _stat_top_k(w.agg, "f1"),
         out_dir=lambda w: _text(
             stat_analysis_dir(
+                experiment=w.experiment,
                 model=w.model,
                 sae=w.sae,
                 layer=int(w.layer),
@@ -178,9 +183,9 @@ rule stat_analysis:
     input:
         acts=_activation_input
     output:
-        metrics="artifacts/analyses/stat/model={model}/sae={sae}/layer={layer}/dataset={dataset}/agg={agg}/metric={metric}/metrics.json"
+        metrics="artifacts/experiments/{experiment}/objects/stat/model={model}/sae={sae}/layer={layer}/dataset={dataset}/agg={agg}/metric={metric}/metrics.json"
     log:
-        "logs/stat/model={model}.sae={sae}.layer={layer}.dataset={dataset}.agg={agg}.metric={metric}.log"
+        "logs/stat/experiment={experiment}.model={model}.sae={sae}.layer={layer}.dataset={dataset}.agg={agg}.metric={metric}.log"
     params:
         max_samples=lambda w: _cli_n(EXPERIMENT.dataset_max_samples(REGISTRY, w.dataset)),
         top_k=lambda w: _stat_top_k(w.agg, w.metric),
@@ -219,6 +224,7 @@ def _stat_done_inputs_for_geo(wildcards):
     return [
         _text(
             stat_analysis_dir(
+                experiment=wildcards.experiment,
                 model=job["model"],
                 sae=job["sae"],
                 layer=job["layer"],
@@ -235,6 +241,7 @@ def _stat_dirs_for_geo(wildcards):
     return " ".join(
         _text(
             stat_analysis_dir(
+                experiment=wildcards.experiment,
                 model=job["model"],
                 sae=job["sae"],
                 layer=job["layer"],
@@ -257,7 +264,7 @@ rule collect_geo_seeds:
     input:
         stats=_stat_done_inputs_for_geo
     output:
-        seeds="artifacts/analyses/geometric/experiment={experiment}/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
+        seeds="artifacts/experiments/{experiment}/objects/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
     log:
         "logs/geometric/experiment={experiment}.sae={sae}.layer={layer}.method=seed_topk_cosine.seeds.log"
     params:
@@ -278,9 +285,9 @@ rule geometric_analysis:
     wildcard_constraints:
         method="norm|topk_cosine"
     output:
-        result="artifacts/analyses/geometric/sae={sae}/layer={layer}/method={method}/{filename}"
+        result="artifacts/experiments/{experiment}/objects/geometric/sae={sae}/layer={layer}/method={method}/{filename}"
     log:
-        "logs/geometric/sae={sae}.layer={layer}.method={method}.filename={filename}.log"
+        "logs/geometric/experiment={experiment}.sae={sae}.layer={layer}.method={method}.filename={filename}.log"
     params:
         top_k=lambda w: _geo_setting(w.method, "top_k"),
         chunk_size=lambda w: _geo_setting(w.method, "chunk_size"),
@@ -300,9 +307,9 @@ rule geometric_analysis:
 
 rule geometric_seed_topk:
     input:
-        seeds="artifacts/analyses/geometric/experiment={experiment}/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
+        seeds="artifacts/experiments/{experiment}/objects/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/seeds.json"
     output:
-        result="artifacts/analyses/geometric/experiment={experiment}/sae={sae}/layer={layer}/method=seed_topk_cosine/neighbors.json"
+        result="artifacts/experiments/{experiment}/objects/geometric/sae={sae}/layer={layer}/method=seed_topk_cosine/neighbors.json"
     log:
         "logs/geometric/experiment={experiment}.sae={sae}.layer={layer}.method=seed_topk_cosine.neighbors.log"
     params:
