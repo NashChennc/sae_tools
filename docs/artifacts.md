@@ -89,6 +89,14 @@ artifacts/experiments/<experiment>/reports/
     missing_artifacts.csv
     summary.json
     plots/*.png
+  pages/artifacts/
+    artifacts.html
+```
+
+Generate a self-contained artifact plot report with:
+
+```bash
+sae-tools-report artifacts --config configs/experiments/response_grid.yaml
 ```
 
 Serve them with:

@@ -73,6 +73,7 @@ Serve generated HTML reports and the read-only dashboard:
 
 ```bash
 python scripts/analyze_layer_trends.py --config configs/experiments/response_grid.yaml
+sae-tools-report artifacts --config configs/experiments/response_grid.yaml
 sae-tools-report serve --config configs/experiments/response_grid.yaml
 ```
 
@@ -96,6 +97,9 @@ python scripts/run_idle_gpu_workflow.py --stages stat,geometric
 
 # Generate the HTML layer-trend report.
 python scripts/analyze_layer_trends.py --config configs/experiments/response_grid.yaml
+
+# Generate a self-contained artifact plot report.
+sae-tools-report artifacts --config configs/experiments/response_grid.yaml
 
 # Serve reports and the browser dashboard on http://127.0.0.1:8765/.
 sae-tools-report serve --config configs/experiments/response_grid.yaml

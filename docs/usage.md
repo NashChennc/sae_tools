@@ -325,6 +325,18 @@ python scripts/analyze_layer_trends.py \
 
 Use `--strict` when every selected layer must have a complete stat artifact.
 
+Generate a self-contained artifact plot report for the selected experiment:
+
+```bash
+sae-tools-report artifacts \
+  --config configs/experiments/response_grid.yaml
+```
+
+The report is written to
+`artifacts/experiments/<experiment>/reports/pages/artifacts/artifacts.html`.
+It embeds PNG plots directly into one HTML file and includes browser-side
+filters for model, SAE, layer, dataset, aggregation, and plot color.
+
 ## HTML Report Server
 
 Serve the generated reports and a read-only dashboard over local HTTP:

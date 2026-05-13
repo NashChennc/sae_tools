@@ -21,6 +21,12 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--report-root", type=Path, default=None, help="Legacy/static report root override.")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
+
+    artifacts = subparsers.add_parser("artifacts", help="Generate a self-contained artifact plot HTML report.")
+    artifacts.add_argument("--repo-root", type=Path, default=None, help="Repository root containing configs and reports.")
+    artifacts.add_argument("--config", type=Path, default=Path("configs/experiments/response_grid.yaml"))
+    artifacts.add_argument("--registry-dir", type=Path, default=None)
+    artifacts.add_argument("--artifact-root", type=Path, default=Path("artifacts"))
     return parser
 
 
@@ -33,13 +39,21 @@ def main(argv: list[str] | None = None) -> int:
         config_path=args.config,
         registry_dir=args.registry_dir,
         artifact_root=args.artifact_root,
-        report_root=args.report_root,
-        host=args.host,
-        port=args.port,
+        report_root=getattr(args, "report_root", None),
+        host=getattr(args, "host", "127.0.0.1"),
+        port=getattr(args, "port", 8765),
     )
     load_dotenv(config.repo_root / ".env")
     if args.command == "serve":
         serve_report(config)
+    elif args.command == "artifacts":
+        from .artifact_report import generate_artifact_report
+
+        result = generate_artifact_report(config)
+        print(f"HTML {result.html_path}")
+        print(f"PLOTS {result.embedded_count}/{result.plot_count} embedded")
+        if result.error_count:
+            print(f"ERRORS {result.error_count}")
     return 0
 
 

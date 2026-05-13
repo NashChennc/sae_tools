@@ -36,3 +36,11 @@ def target_counts(activations: int, stat: int, geometric: int) -> str:
 
 def artifact_counts(done: int, missing: int, incomplete: int, failed: int) -> str:
     return f"{done} done, {missing} missing, {incomplete} incomplete, {failed} failed"
+
+
+def format_bytes(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if value < 1024 or unit == "TiB":
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024

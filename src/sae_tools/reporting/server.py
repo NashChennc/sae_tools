@@ -293,19 +293,24 @@ def serve_report(config: ReportServerConfig) -> None:
 def render_index(config: ReportServerConfig, data: ReportData) -> str:
     experiment_name = data.experiment_name
     html_report = config.report_root / "pages" / "layer_trends" / "layer_trends.html"
+    artifact_report = config.report_root / "pages" / "artifacts" / "artifacts.html"
     report_link = f"/layer-trends/{urllib.parse.quote(experiment_name)}/" if html_report.exists() else "#"
     report_status = "done" if html_report.exists() else "missing"
+    artifact_link = f"/artifact-plots/{urllib.parse.quote(experiment_name)}/" if artifact_report.exists() else "#"
+    artifact_status = "done" if artifact_report.exists() else "missing"
     rows = data.experiment_summaries()
     body = f"""
 <section class="grid">
   <section class="card"><div class="label">Selected experiment</div><div class="value">{escape(experiment_name)}</div></section>
   <section class="card"><div class="label">HTML report</div><div class="value">{status_badge(report_status)}</div></section>
+  <section class="card"><div class="label">Artifact plot report</div><div class="value">{status_badge(artifact_status)}</div></section>
   <section class="card"><div class="label">Store reports</div><div class="value">{escape(config.report_root)}</div></section>
 </section>
 <section class="panel">
   <h2>Selected Report</h2>
   <div class="links">
     <a href="{report_link}">Open layer trend report</a>
+    <a href="{artifact_link}">Open artifact plot report</a>
     <a href="/dashboard">Open dashboard</a>
   </div>
 </section>
@@ -375,6 +380,8 @@ def _make_handler(config: ReportServerConfig, data: ReportData):
                     )
                 elif parsed.path.startswith("/layer-trends/"):
                     self._serve_layer_trends(parsed.path)
+                elif parsed.path.startswith("/artifact-plots/"):
+                    self._serve_artifact_plots(parsed.path)
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             except Exception as exc:
@@ -401,6 +408,24 @@ def _make_handler(config: ReportServerConfig, data: ReportData):
             target = _safe_join(base, Path(*rest))
             if target.is_dir():
                 target = _safe_join(base, Path(*rest) / "layer_trends.html")
+            self._send_file(target)
+
+        def _serve_artifact_plots(self, path: str) -> None:
+            parts = [urllib.parse.unquote(part) for part in path.split("/") if part]
+            if len(parts) < 2:
+                self.send_error(HTTPStatus.NOT_FOUND, "Artifact plot report not found")
+                return
+            experiment = safe_path_part(parts[1], field="experiment")
+            rest = parts[2:] or ["artifacts.html"]
+            if parts[2:] == [] and not path.endswith("/"):
+                self.send_response(HTTPStatus.MOVED_PERMANENTLY)
+                self.send_header("Location", f"/artifact-plots/{urllib.parse.quote(experiment)}/")
+                self.end_headers()
+                return
+            base = experiment_dir(root=config.artifact_root, experiment=experiment) / "reports" / "pages" / "artifacts"
+            target = _safe_join(base, Path(*rest))
+            if target.is_dir():
+                target = _safe_join(base, Path(*rest) / "artifacts.html")
             self._send_file(target)
 
         def _send_file(self, path: Path) -> None:

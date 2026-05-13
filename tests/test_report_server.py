@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
 import pytest
 
 from sae_tools.reporting.__main__ import build_parser
+from sae_tools.reporting.artifact_report import generate_artifact_report
+from sae_tools.reporting.layout import read_layout
 from sae_tools.reporting.server import ReportData, ReportServerConfig, Selection, _safe_join, render_dashboard, render_index
 from sae_tools.workflow.artifacts import stat_analysis_dir
 
@@ -19,11 +22,19 @@ def test_report_cli_parser_defaults():
     assert args.config == Path("configs/experiments/response_grid.yaml")
     assert args.report_root is None
 
+    artifact_args = build_parser().parse_args(["artifacts"])
+    assert artifact_args.command == "artifacts"
+    assert artifact_args.config == Path("configs/experiments/response_grid.yaml")
+    assert artifact_args.artifact_root == Path("artifacts")
+
 
 def test_report_server_routes_index_dashboard_and_layer_report(tmp_path):
     report_dir = tmp_path / "artifacts/experiments/response_grid/reports/pages/layer_trends"
     report_dir.mkdir(parents=True)
     (report_dir / "layer_trends.html").write_text("<html><body>layer report</body></html>", encoding="utf-8")
+    artifact_dir = tmp_path / "artifacts/experiments/response_grid/reports/pages/artifacts"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "artifacts.html").write_text("<html><body>artifact report</body></html>", encoding="utf-8")
 
     config = ReportServerConfig.from_paths(
         repo_root=Path.cwd(),
@@ -34,6 +45,7 @@ def test_report_server_routes_index_dashboard_and_layer_report(tmp_path):
     index = render_index(config, data)
     assert "SAE Tools Reports" in index
     assert "/dashboard" in index
+    assert "/artifact-plots/response_grid/" in index
 
     dashboard = render_dashboard(config, data)
     assert "Feature Explorer" in dashboard
@@ -42,6 +54,44 @@ def test_report_server_routes_index_dashboard_and_layer_report(tmp_path):
     assert (report_dir / "layer_trends.html").read_text(encoding="utf-8") == "<html><body>layer report</body></html>"
     with pytest.raises(PermissionError):
         _safe_join(report_dir, Path("../secret.txt"))
+
+
+def test_artifact_plot_report_generates_embedded_html(tmp_path):
+    stat_dir = stat_analysis_dir(
+        root=tmp_path / "artifacts",
+        experiment="response_grid",
+        model="qwen3-8b",
+        sae="qwen-scope-qwen3-8b-l0-50",
+        layer=18,
+        dataset="ToxicChat_response",
+        agg="max",
+    )
+    plot_dir = stat_dir / "plots"
+    plot_dir.mkdir(parents=True)
+    png_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    )
+    (plot_dir / "pr_space.color=diff.png").write_bytes(png_bytes)
+
+    config = ReportServerConfig.from_paths(
+        repo_root=Path.cwd(),
+        config_path="configs/experiments/response_grid.yaml",
+        artifact_root=tmp_path / "artifacts",
+    )
+    result = generate_artifact_report(config)
+
+    assert result.plot_count == 1
+    assert result.embedded_count == 1
+    assert result.error_count == 0
+    assert result.html_path == tmp_path / "artifacts/experiments/response_grid/reports/pages/artifacts/artifacts.html"
+    html = result.html_path.read_text(encoding="utf-8")
+    assert "Artifact Plot Report: response_grid" in html
+    assert "data:image/png;base64," in html
+    assert "ToxicChat_response" in html
+    assert "artifact-search" in html
+
+    layout = read_layout(tmp_path / "artifacts/experiments/response_grid/reports/layout.json")
+    assert any(page.id == "artifact_plots" for page in layout.pages)
 
 
 def test_report_features_api_reads_top_features(tmp_path):

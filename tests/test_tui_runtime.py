@@ -5,6 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
+
+from sae_tools_tui.backend import TUIBackend
 from sae_tools.workflow import runtime
 
 
@@ -79,6 +82,35 @@ def test_tui_backend_builds_expected_commands():
     assert run_missing[1].endswith("scripts/run_idle_gpu_workflow.py")
     assert run_missing[run_missing.index("--stages") + 1] == "stat,geometric"
     assert "--no-conda-run" in run_missing
+
+
+def test_tui_backend_scans_artifact_files_and_details(tmp_path):
+    bundle = tmp_path / "artifacts/experiments/response_grid/objects/stat/model=qwen3-8b"
+    summary = bundle / "summary.json"
+    summary.parent.mkdir(parents=True)
+    summary.write_text('{"status": "ok", "count": 3}', encoding="utf-8")
+    table_path = bundle / "feature_table.parquet"
+    pd.DataFrame({"feature": [1, 2], "f1": [0.5, 0.6]}).to_parquet(table_path, index=False)
+    activation = tmp_path / "artifacts/experiments/response_grid/objects/activations/model=qwen3-8b/acts.pt"
+    activation.parent.mkdir(parents=True)
+    activation.write_bytes(b"placeholder")
+
+    backend = TUIBackend(repo_root=tmp_path)
+    records = backend.artifact_files("configs/experiments/response_grid.yaml")
+    by_name = {record.path.name: record for record in records}
+
+    assert by_name["summary.json"].kind == "stat"
+    assert by_name["summary.json"].role == "summary"
+    assert by_name["feature_table.parquet"].role == "feature-table"
+    assert by_name["acts.pt"].role == "activation"
+
+    json_detail = backend.artifact_file_detail(by_name["summary.json"].path)
+    parquet_detail = backend.artifact_file_detail(by_name["feature_table.parquet"].path)
+    binary_detail = backend.artifact_file_detail(by_name["acts.pt"].path)
+
+    assert '"status": "ok"' in json_detail
+    assert "rows: 2" in parquet_detail
+    assert "not loaded by the TUI" in binary_detail
 
 
 def test_python_module_help_smoke():

@@ -55,6 +55,15 @@ def default_layout() -> ReportLayout:
                     ReportBlock(id="data_files", kind="links", title="Data Files", source="reports/pages/layer_trends"),
                 ],
             ),
+            ReportPage(
+                id="artifact_plots",
+                title="Artifact Plot Report",
+                route="/artifact-plots/{experiment}/",
+                blocks=[
+                    ReportBlock(id="summary", kind="summary", title="Summary", source="reports/pages/artifacts/artifacts.html"),
+                    ReportBlock(id="plots", kind="plot_grid", title="Plots", source="reports/pages/artifacts/artifacts.html"),
+                ],
+            ),
         ]
     )
 

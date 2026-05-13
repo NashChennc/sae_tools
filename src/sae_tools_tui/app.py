@@ -10,7 +10,7 @@ from textual.widgets import Button, Checkbox, DataTable, Footer, Header, RichLog
 from sae_tools.workflow.runtime import STAGES
 
 from .backend import ExperimentDetails, TUIBackend
-from .widgets import artifact_counts, bool_text, compact_path, status_text, target_counts
+from .widgets import artifact_counts, bool_text, compact_path, format_bytes, status_text, target_counts
 
 
 class SAEWorkflowTUI(App):
@@ -75,6 +75,21 @@ class SAEWorkflowTUI(App):
         height: 1fr;
         border: solid #30363d;
     }
+
+    #artifact-browser {
+        height: 1fr;
+    }
+
+    #artifact-files {
+        width: 58%;
+    }
+
+    #artifact-detail {
+        width: 1fr;
+        height: 1fr;
+        border: solid #30363d;
+        padding: 0 1;
+    }
     """
 
     BINDINGS = [
@@ -91,6 +106,8 @@ class SAEWorkflowTUI(App):
         self.selected_config: Path | None = None
         self.details: ExperimentDetails | None = None
         self.experiment_paths: list[Path] = []
+        self.artifact_file_paths: list[Path] = []
+        self.selected_artifact_file: Path | None = None
         self.running_task: asyncio.Task[None] | None = None
 
     def compose(self) -> ComposeResult:
@@ -108,6 +125,10 @@ class SAEWorkflowTUI(App):
                         yield DataTable(id="resources")
                     with TabPane("Artifacts", id="artifacts-tab"):
                         yield DataTable(id="artifacts")
+                    with TabPane("Browse", id="browse-tab"):
+                        with Horizontal(id="artifact-browser"):
+                            yield DataTable(id="artifact-files")
+                            yield RichLog(id="artifact-detail", highlight=False, markup=False)
                     with TabPane("GPUs", id="gpus-tab"):
                         yield DataTable(id="gpus")
                     with TabPane("Run", id="run-tab"):
@@ -139,8 +160,25 @@ class SAEWorkflowTUI(App):
 
     def on_data_table_row_selected(self, event: object) -> None:
         data_table = getattr(event, "data_table", None)
-        if getattr(data_table, "id", None) != "experiments":
+        table_id = getattr(data_table, "id", None)
+        if table_id == "artifact-files":
+            row_key = getattr(event, "row_key", None)
+            if row_key is not None:
+                self.show_artifact_detail(Path(str(getattr(row_key, "value", row_key))))
+                return
+            row_index = getattr(event, "cursor_row", getattr(data_table, "cursor_row", None))
+            if row_index is not None and 0 <= row_index < len(self.artifact_file_paths):
+                self.show_artifact_detail(self.artifact_file_paths[row_index])
             return
+        if table_id != "experiments":
+            return
+        row_key = getattr(event, "row_key", None)
+        if row_key is not None:
+            key_value = getattr(row_key, "value", row_key)
+            for path in self.experiment_paths:
+                if str(path) == str(key_value):
+                    self.select_experiment(path)
+                    return
         row_index = getattr(event, "cursor_row", getattr(data_table, "cursor_row", None))
         if row_index is None or row_index < 0 or row_index >= len(self.experiment_paths):
             return
@@ -166,9 +204,12 @@ class SAEWorkflowTUI(App):
             "artifacts",
             "error",
         )
+        self.query_one("#experiments", DataTable).cursor_type = "row"
         self._reset_table("checks", "check", "status", "detail")
         self._reset_table("resources", "kind", "key", "status", "path", "detail")
         self._reset_table("artifacts", "stage", "status", "target", "log", "reason")
+        self._reset_table("artifact-files", "kind", "role", "size", "modified", "path")
+        self.query_one("#artifact-files", DataTable).cursor_type = "row"
         self._reset_table("gpus", "gpu", "name", "used", "free", "util", "idle", "reason")
 
     def _reset_table(self, table_id: str, *columns: str) -> DataTable:
@@ -181,6 +222,8 @@ class SAEWorkflowTUI(App):
         self.populate_experiments()
         if self.selected_config is None and self.initial_config is not None:
             self.select_experiment(self.initial_config)
+        elif self.selected_config is None and self.experiment_paths:
+            self.select_experiment(self.experiment_paths[0])
         elif self.selected_config is not None:
             self.select_experiment(self.selected_config)
         else:
@@ -191,6 +234,7 @@ class SAEWorkflowTUI(App):
     def refresh_dynamic(self) -> None:
         if self.selected_config is not None:
             self.populate_artifacts(self.selected_config)
+            self.populate_artifact_files(self.selected_config)
         self.populate_gpus()
 
     def populate_experiments(self) -> None:
@@ -205,6 +249,7 @@ class SAEWorkflowTUI(App):
             "artifacts",
             "error",
         )
+        table.cursor_type = "row"
         summaries = self.backend.list_experiments()
         self.experiment_paths = [summary.path for summary in summaries]
         for summary in summaries:
@@ -217,9 +262,12 @@ class SAEWorkflowTUI(App):
                 target_counts(summary.activation_targets, summary.stat_targets, summary.geometric_targets),
                 artifact_counts(summary.done, summary.missing, summary.incomplete, summary.failed),
                 summary.error,
+                key=str(summary.path),
             )
 
     def select_experiment(self, config_path: Path) -> None:
+        if self.selected_config != Path(config_path):
+            self.selected_artifact_file = None
         self.selected_config = Path(config_path)
         selection = self.query_one("#selection", Static)
         try:
@@ -240,6 +288,7 @@ class SAEWorkflowTUI(App):
         self.populate_checks(self.selected_config)
         self.populate_resources(self.details)
         self.populate_artifacts(self.selected_config)
+        self.populate_artifact_files(self.selected_config)
         self.set_run_buttons(self.details.runnable)
 
     def populate_checks(self, config_path: Path | None) -> None:
@@ -251,6 +300,10 @@ class SAEWorkflowTUI(App):
     def populate_empty_details(self) -> None:
         self._reset_table("resources", "kind", "key", "status", "path", "detail")
         self._reset_table("artifacts", "stage", "status", "target", "log", "reason")
+        self._reset_table("artifact-files", "kind", "role", "size", "modified", "path")
+        self.artifact_file_paths = []
+        self.selected_artifact_file = None
+        self.query_one("#artifact-detail", RichLog).clear()
         self.set_run_buttons(False)
 
     def populate_resources(self, details: ExperimentDetails) -> None:
@@ -274,6 +327,48 @@ class SAEWorkflowTUI(App):
                     compact_path(record.log_path),
                     record.reason,
                 )
+
+    def populate_artifact_files(self, config_path: Path) -> None:
+        table = self._reset_table("artifact-files", "kind", "role", "size", "modified", "path")
+        table.cursor_type = "row"
+        detail = self.query_one("#artifact-detail", RichLog)
+        try:
+            records = self.backend.artifact_files(config_path)
+        except Exception as exc:
+            self.artifact_file_paths = []
+            table.add_row("error", "scan", "-", "-", str(exc))
+            detail.clear()
+            detail.write(str(exc))
+            return
+        self.artifact_file_paths = [record.path for record in records]
+        for record in records:
+            table.add_row(
+                record.kind,
+                record.role,
+                format_bytes(record.size_bytes),
+                record.modified_at,
+                compact_path(record.path, max_len=90),
+                key=str(record.path),
+            )
+        if self.selected_artifact_file in self.artifact_file_paths:
+            self.show_artifact_detail(self.selected_artifact_file)
+        elif records:
+            self.selected_artifact_file = None
+            detail.clear()
+            detail.write(f"{len(records)} files scanned. Select a row to view details.")
+        else:
+            self.selected_artifact_file = None
+            detail.clear()
+            detail.write("No artifact files found for this experiment.")
+
+    def show_artifact_detail(self, path: Path) -> None:
+        self.selected_artifact_file = path
+        detail = self.query_one("#artifact-detail", RichLog)
+        detail.clear()
+        try:
+            detail.write(self.backend.artifact_file_detail(path))
+        except Exception as exc:
+            detail.write(f"{path}: {exc}")
 
     def populate_gpus(self) -> None:
         table = self._reset_table("gpus", "gpu", "name", "used", "free", "util", "idle", "reason")
