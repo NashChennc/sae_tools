@@ -11,10 +11,12 @@ Implemented using `sae_lens` and `transformer_lens`, this toolkit features an An
 > Due to the restricted network access in my experimental environment, I intentionally avoided network dependencies during development, such as port mapping (in `sae_dashboard`) and online model loading (in `transformer_lens`), which have given me a lot of trouble.
 
 <p>
-  <img src="images/Aegis1.0_pr_space.png" alt="scatter" width="24%">
-  <img src="images/dashboard.png" alt="dashboard" width="24%">
-  <img src="images/cross_corr.png" alt="cross correlation" width="24%">
-  <img src="images/dimreduction.png" alt="dimension reduction" width="24%">
+  <img src="docs/images/tui.png" alt="tui" width="40%">
+  <img src="docs/images/Aegis1.0_pr_space.png" alt="scatter" width="21%">
+  <br/>
+  <img src="docs/images/dashboard.png" alt="dashboard" width="32%">
+  <img src="docs/images/cross_corr.png" alt="cross correlation" width="24%">
+  <img src="docs/images/dimreduction.png" alt="dimension reduction" width="26%">
 </p>
 
 ## Start Here
