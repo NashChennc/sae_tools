@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", required=True, help="Model registry key.")
     parser.add_argument("--sae", required=True, help="SAE registry key.")
     parser.add_argument("--dataset", required=True, help="Dataset registry key.")
+    parser.add_argument("--split", default=None, help="Dataset split override.")
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--artifact-root", type=Path, default=REPO_ROOT / "artifacts")
@@ -108,10 +109,11 @@ def main() -> None:
     dataset_path = Path(dataset_spec.folder)
     if not dataset_path.is_absolute():
         dataset_path = Path(dataset_root) / dataset_path
+    split = args.split if args.split is not None else dataset_spec.split
     dataset = adapter.load(
         str(dataset_path),
         max_samples,
-        split=dataset_spec.split,
+        split=split,
         subset=dataset_spec.subset,
     )
 
@@ -135,7 +137,7 @@ def main() -> None:
             "dataset": args.dataset,
             "adapter": dataset_spec.adapter,
             "data_type": dataset_spec.data_type,
-            "split": dataset_spec.split,
+            "split": split,
             "subset": dataset_spec.subset,
             "max_samples": max_samples,
             "batch_size": args.batch_size,

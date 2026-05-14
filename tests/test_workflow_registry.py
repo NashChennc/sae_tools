@@ -27,9 +27,8 @@ def test_registry_loads_default_yaml_and_validates_backends():
     assert registry.sae("qwen-scope-qwen3-8b-l0-100").layers == (15, 18, 21, 24, 27, 30, 33)
     assert registry.sae("qwen-scope-qwen3-8b-l0-100").top_k == 100
     assert registry.dataset("ToxicChat_prompt").adapter == "ToxicChat"
-    assert registry.dataset("ToxicChat_response").label_field == "prompt_label"
+    assert registry.dataset("ToxicChat_response").label_field == "response_label"
     assert registry.dataset("Aegis2.0_response").label_field == "response_label"
-    assert registry.dataset("ToxicChat_prompt").max_samples == 1000
     assert registry.analysis("stat_basic").metrics == ("pearson", "auroc", "f1")
     assert registry.validate_backends() == []
 

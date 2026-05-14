@@ -4,9 +4,12 @@ saes:
   - qwen-scope-qwen3-8b-l0-100
 layers: [15, 18, 21, 24, 27, 30, 33]
 datasets:
-  - ToxicChat_response
-  - Aegis2.0_response
-  - BeaverTails_response
+  - id: ToxicChat_response
+    max_samples: 1000
+  - id: Aegis2.0_response
+    max_samples: 1000
+  - id: BeaverTails_response
+    max_samples: 1000
 activation:
   overwrite: false
   batch_size: 2

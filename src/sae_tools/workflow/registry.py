@@ -108,24 +108,13 @@ class DatasetSpec:
     data_type: str = "prompt"
     split: str | None = None
     subset: str | None = None
-    max_samples: int | None = None
-    label_field_override: str | None = None
 
     @classmethod
-    def from_mapping(
-        cls,
-        key: str,
-        data: dict[str, Any],
-        *,
-        default_max_samples: int | None = None,
-    ) -> "DatasetSpec":
+    def from_mapping(cls, key: str, data: dict[str, Any]) -> "DatasetSpec":
         safe_path_part(key, field="dataset")
         data_type = str(data.get("data_type", data.get("type", "prompt")))
         if data_type not in {"prompt", "response"}:
             raise ValueError(f"Dataset '{key}' has unsupported data_type: {data_type}")
-        max_samples = data.get("max_samples", default_max_samples)
-        if max_samples is not None:
-            max_samples = int(max_samples)
         return cls(
             key=key,
             adapter=str(data.get("adapter", data.get("name", key))),
@@ -133,22 +122,15 @@ class DatasetSpec:
             data_type=data_type,
             split=None if data.get("split") is None else str(data.get("split")),
             subset=None if data.get("subset") is None else str(data.get("subset")),
-            max_samples=max_samples,
-            label_field_override=None if data.get("label_field") is None else str(data.get("label_field")),
         )
 
     @property
     def label_field(self) -> str:
-        if self.label_field_override:
-            return self.label_field_override
         return f"{self.data_type}_label"
 
     @property
     def split_part(self) -> str:
         return normalize_split(self.split)
-
-    def n_part(self, override: int | None = None) -> str:
-        return normalize_n(self.max_samples if override is None else override)
 
 
 @dataclass(frozen=True)
@@ -211,13 +193,8 @@ class Registry:
                 expanded_sae_data[key] = value
         saes = {key: SAESpec.from_mapping(key, value) for key, value in expanded_sae_data.items()}
 
-        dataset_defaults = dataset_file.get("defaults", {}) or {}
-        default_max_samples = dataset_defaults.get("max_samples")
         dataset_data = _section(dataset_file, "datasets")
-        datasets = {
-            key: DatasetSpec.from_mapping(key, value, default_max_samples=default_max_samples)
-            for key, value in dataset_data.items()
-        }
+        datasets = {key: DatasetSpec.from_mapping(key, value) for key, value in dataset_data.items()}
         analyses = {key: AnalysisSpec.from_mapping(key, value) for key, value in analysis_data.items()}
         registry = cls(directory=directory, models=models, saes=saes, datasets=datasets, analyses=analyses)
         registry.validate_references()
@@ -281,6 +258,7 @@ class Registry:
 class ExperimentDataset:
     key: str
     max_samples: int | None = None
+    split: str | None = None
 
 
 @dataclass(frozen=True)
@@ -347,11 +325,17 @@ class ExperimentSpec:
                         f"Supported layers: {list(sae.layers)}"
                     )
 
-    def dataset_max_samples(self, registry: Registry, dataset_key: str) -> int | None:
+    def dataset_max_samples(self, dataset_key: str) -> int | None:
         for item in self.datasets:
-            if item.key == dataset_key and item.max_samples is not None:
+            if item.key == dataset_key:
                 return item.max_samples
-        return registry.dataset(dataset_key).max_samples
+        return None
+
+    def dataset_split(self, registry: Registry, dataset_key: str) -> str | None:
+        for item in self.datasets:
+            if item.key == dataset_key and item.split is not None:
+                return item.split
+        return registry.dataset(dataset_key).split
 
     def statistical_analyses(self, registry: Registry) -> tuple[AnalysisSpec, ...]:
         return tuple(registry.analysis(key) for key in self.analyses if registry.analysis(key).kind == "statistical")
@@ -370,14 +354,15 @@ class ExperimentSpec:
                 for layer in self.layers_for_sae(registry, sae_key):
                     for dataset_item in self.datasets:
                         dataset = registry.dataset(dataset_item.key)
-                        max_samples = self.dataset_max_samples(registry, dataset.key)
+                        split = self.dataset_split(registry, dataset_item.key)
+                        max_samples = self.dataset_max_samples(dataset_item.key)
                         jobs.append(
                             {
                                 "model": model_key,
                                 "sae": sae_key,
                                 "layer": layer,
-                                "dataset": dataset.key,
-                                "split": dataset.split_part,
+                                "dataset": dataset_item.key,
+                                "split": normalize_split(split),
                                 "n": normalize_n(max_samples),
                                 "max_samples": max_samples,
                                 "batch_size": self.activation_batch_size,
@@ -429,7 +414,12 @@ def _parse_experiment_dataset(value: Any) -> ExperimentDataset:
         if not key:
             raise ValueError(f"Experiment dataset entry requires id/dataset/key: {value}")
         max_samples = value.get("max_samples")
-        return ExperimentDataset(key=key, max_samples=None if max_samples is None else int(max_samples))
+        split = value.get("split")
+        return ExperimentDataset(
+            key=key,
+            max_samples=None if max_samples is None else int(max_samples),
+            split=None if split is None else str(split),
+        )
     raise ValueError(f"Unsupported experiment dataset entry: {value!r}")
 
 

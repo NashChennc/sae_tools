@@ -20,9 +20,17 @@ def _text(path):
 
 
 def _cli_n(max_samples):
-    if max_samples is None or int(max_samples) <= 0:
+    if max_samples is None or max_samples == -1:
         return -1
-    return int(max_samples)
+    if isinstance(max_samples, str):
+        text = max_samples.strip()
+        if not text or text.lower() in {"all", "none", "null", "-1"}:
+            return -1
+        max_samples = int(text)
+    max_samples = int(max_samples)
+    if max_samples <= 0:
+        return -1
+    return max_samples
 
 
 def _stat_top_k(agg, metric):
@@ -40,8 +48,8 @@ def _geo_setting(method, field):
 
 
 def _activation_input(wildcards):
-    dataset = REGISTRY.dataset(wildcards.dataset)
-    max_samples = EXPERIMENT.dataset_max_samples(REGISTRY, wildcards.dataset)
+    split = EXPERIMENT.dataset_split(REGISTRY, wildcards.dataset)
+    max_samples = EXPERIMENT.dataset_max_samples(wildcards.dataset)
     return _text(
         activation_path(
             experiment=wildcards.experiment,
@@ -49,7 +57,7 @@ def _activation_input(wildcards):
             sae=wildcards.sae,
             layer=int(wildcards.layer),
             dataset=wildcards.dataset,
-            split=dataset.split,
+            split=split,
             max_samples=max_samples,
         )
     )
@@ -63,7 +71,7 @@ ACTIVATION_TARGETS = [
             sae=job["sae"],
             layer=job["layer"],
             dataset=job["dataset"],
-            split=REGISTRY.dataset(job["dataset"]).split,
+            split=job["split"],
             max_samples=job["max_samples"],
         )
     )
@@ -136,6 +144,7 @@ rule activations:
           --sae {wildcards.sae} \
           --layer {wildcards.layer} \
           --dataset {wildcards.dataset} \
+          --split {wildcards.split} \
           --max-samples {params.max_samples} \
           --batch-size {params.batch_size} \
           --out {output.acts} \
@@ -151,7 +160,7 @@ rule stat_analysis_batch:
     log:
         "logs/stat_batch/experiment={experiment}.model={model}.sae={sae}.layer={layer}.dataset={dataset}.agg={agg}.log"
     params:
-        max_samples=lambda w: _cli_n(EXPERIMENT.dataset_max_samples(REGISTRY, w.dataset)),
+        max_samples=lambda w: _cli_n(EXPERIMENT.dataset_max_samples(w.dataset)),
         metrics=lambda w: ",".join(_stat_metrics(w.agg)),
         top_k=lambda w: _stat_top_k(w.agg, "f1"),
         out_dir=lambda w: _text(
@@ -187,7 +196,7 @@ rule stat_analysis:
     log:
         "logs/stat/experiment={experiment}.model={model}.sae={sae}.layer={layer}.dataset={dataset}.agg={agg}.metric={metric}.log"
     params:
-        max_samples=lambda w: _cli_n(EXPERIMENT.dataset_max_samples(REGISTRY, w.dataset)),
+        max_samples=lambda w: _cli_n(EXPERIMENT.dataset_max_samples(w.dataset)),
         top_k=lambda w: _stat_top_k(w.agg, w.metric),
     shell:
         """

@@ -1,6 +1,3 @@
-defaults:
-  max_samples: 1000
-
 datasets:
   ToxicChat_prompt:
     adapter: ToxicChat
@@ -12,7 +9,6 @@ datasets:
     adapter: ToxicChat
     folder: toxic-chat
     data_type: response
-    label_field: prompt_label
     split: null
 
   OpenAIMod_prompt:
@@ -33,11 +29,11 @@ datasets:
     data_type: prompt
     split: null
 
-  Aegis2.0_train_prompt:
+  Aegis2.0_response:
     adapter: Aegis2.0
     folder: Aegis-AI-Content-Safety-Dataset-2.0
-    data_type: prompt
-    split: train
+    data_type: response
+    split: null
 
   SimpleSafetyTest_prompt:
     adapter: SimpleSafetyTest
@@ -69,12 +65,6 @@ datasets:
     data_type: response
     split: null
 
-  BeaverTails_train_response:
-    adapter: BeaverTails
-    folder: BeaverTails
-    data_type: response
-    split: 30k_train
-
   BeaverTailsAugmented_response:
     adapter: BeaverTailsAugmented
     folder: BeaverTailsAugmented
@@ -87,33 +77,15 @@ datasets:
     data_type: response
     split: null
 
-  SafeRLHF_train_response:
-    adapter: SafeRLHF
-    folder: PKU-SafeRLHF
-    data_type: response
-    split: train
-
   XSTestResponse_response:
     adapter: XSTestResponse
     folder: xstest-response
     data_type: response
     split: null
 
-  WildGuardMix_train_response:
+  WildGuardMix_response:
     adapter: WildGuardMix
     folder: wildguardmix
     data_type: response
     subset: wildguardtrain
-    split: train
-
-  Aegis2.0_train_response:
-    adapter: Aegis2.0
-    folder: Aegis-AI-Content-Safety-Dataset-2.0
-    data_type: response
-    split: train
-
-  Aegis2.0_response:
-    adapter: Aegis2.0
-    folder: Aegis-AI-Content-Safety-Dataset-2.0
-    data_type: response
     split: null

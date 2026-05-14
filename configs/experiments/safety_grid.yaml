@@ -1,8 +1,10 @@
 models: [qwen3-8b]
 saes: [qwen-scope-qwen3-8b-l0-50]
 datasets:
-  - ToxicChat_prompt
-  - HarmBench_prompt
+  - id: ToxicChat_prompt
+    max_samples: 1000
+  - id: HarmBench_prompt
+    max_samples: 1000
 activation:
   overwrite: false
   batch_size: 2

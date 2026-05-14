@@ -134,7 +134,7 @@ def target_records_for_experiment(
             sae=str(job["sae"]),
             layer=int(job["layer"]),
             dataset=str(job["dataset"]),
-            split=dataset.split,
+            split=job["split"],
             max_samples=job["max_samples"],
         )
         log_path = Path(

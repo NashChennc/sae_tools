@@ -37,8 +37,13 @@ def resolve_registry(args: argparse.Namespace) -> Registry:
     return load_registry(args.registry_dir)
 
 
-def resolve_max_samples(cli_value: int | None, dataset: DatasetSpec) -> int | None:
-    return dataset.max_samples if cli_value is None else cli_value
+def resolve_max_samples(cli_value: int | None, _dataset: DatasetSpec) -> int | None:
+    """Return the CLI-supplied max_samples value.
+
+    max_samples is set at the experiment level or via CLI; the registry no
+    longer carries a per-dataset default.
+    """
+    return cli_value
 
 
 def dataset_local_path(dataset: DatasetSpec, dataset_root: str | os.PathLike[str]) -> Path:
