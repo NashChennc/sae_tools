@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import AsyncIterator, Sequence
 
 from sae_tools.workflow.registry import ExperimentSpec, Registry
+from sae_tools.workflow.gpu import gpu_backend_info
 from sae_tools.workflow.runtime import (
     ArtifactRecord,
     EnvironmentCheck,
@@ -132,6 +133,9 @@ class TUIBackend:
         if preview:
             lines.extend(["", preview])
         return "\n".join(lines)
+
+    def gpu_backend(self) -> tuple[str, str | None]:
+        return gpu_backend_info()
 
     def gpu_rows(
         self,

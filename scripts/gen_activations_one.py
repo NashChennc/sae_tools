@@ -75,6 +75,15 @@ def main() -> None:
     sae_root = require_env("SAE_ROOT")
     dataset_root = require_env("DATASET_ROOT")
     device = args.device or model_spec.device
+    if device == "cuda":
+        import torch
+
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA device requested but torch.cuda.is_available() is False. "
+                "Activation generation requires an NVIDIA GPU. "
+                "On Mac/Linux without GPU, use the TUI, reporting, or registry inspection instead."
+            )
     dtype = args.dtype or model_spec.dtype
 
     sae_path = sae_profile.layer_path(sae_root, layer)

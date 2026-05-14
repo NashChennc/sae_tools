@@ -41,11 +41,12 @@ def test_tui_sae_resource_scan_checks_all_requested_layers(tmp_path):
 
 def test_environment_checks_report_missing_runtime_tools(monkeypatch):
     def fake_which(command: str) -> str | None:
-        if command in {"snakemake", "nvidia-smi"}:
+        if command == "snakemake":
             return None
         return f"/usr/bin/{command}"
 
     monkeypatch.setattr(runtime.shutil, "which", fake_which)
+    monkeypatch.setattr(runtime, "gpu_backend_info", lambda: ("none", None))
     checks = runtime.check_environment(
         config_path="configs/experiments/safety_grid.yaml",
         registry_dir="configs/registry",
@@ -54,7 +55,7 @@ def test_environment_checks_report_missing_runtime_tools(monkeypatch):
 
     failures = {check.name: check.detail for check in checks if not check.ok}
     assert "snakemake" in failures
-    assert "nvidia-smi" in failures
+    assert "gpu" in failures
     assert "resources" in failures
 
 

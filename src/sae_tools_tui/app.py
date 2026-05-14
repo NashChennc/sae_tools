@@ -354,7 +354,18 @@ class SAEWorkflowTUI(App):
         if error is not None:
             table.add_row("-", "-", "-", "-", "-", status_text("failed"), error)
             return
+        if not rows:
+            backend, _ = self.backend.gpu_backend()
+            if backend == "apple-silicon":
+                table.add_row("-", "-", "-", "-", "-", "-", "No NVIDIA GPUs on this Mac. GPU runner requires NVIDIA+CUDA.")
+            else:
+                table.add_row("-", "-", "-", "-", "-", "-", "No GPUs detected. Check nvidia-smi or GPU drivers.")
+            return
         for row in rows:
+            reason = str(row.get("reason", ""))
+            notes = str(row.get("notes", ""))
+            if notes:
+                reason = f"{reason}  [{notes}]"
             table.add_row(
                 str(row["gpu"]),
                 str(row["name"]),
@@ -362,7 +373,7 @@ class SAEWorkflowTUI(App):
                 f"{row['free_mib']} MiB",
                 f"{row['util_pct']}%",
                 str(row["selected"]),
-                str(row["reason"]),
+                reason,
             )
 
     def set_run_buttons(self, enabled: bool) -> None:

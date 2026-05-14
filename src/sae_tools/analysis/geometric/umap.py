@@ -83,7 +83,13 @@ def run_umap(data):
             "Install cudf and cuml before running geometric UMAP analysis."
         )
 
-    gpu_data = cudf.DataFrame(data)
+    try:
+        gpu_data = cudf.DataFrame(data)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "cuDF requires a working CUDA context. "
+            "Ensure an NVIDIA GPU with CUDA drivers is available."
+        ) from exc
 
     umap_gpu = UMAP(
         n_components=2,

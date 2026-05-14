@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from .artifacts import activation_path, done_path, geometric_path, stat_analysis_dir
+from .gpu import GPUInfo, classify_gpus, gpu_backend_info, parse_gpu_set, query_gpus
 from .registry import ExperimentSpec, Registry
 
 
@@ -20,18 +21,6 @@ STAGES = ("activations", "stat", "geometric")
 def default_repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
-
-@dataclass(frozen=True)
-class GPUInfo:
-    index: int
-    name: str
-    memory_total_mib: int
-    memory_used_mib: int
-    utilization_gpu_pct: int
-
-    @property
-    def memory_free_mib(self) -> int:
-        return self.memory_total_mib - self.memory_used_mib
 
 
 @dataclass(frozen=True)
@@ -86,12 +75,6 @@ class EnvironmentCheck:
     detail: str
 
 
-def parse_gpu_set(value: str | None) -> set[int] | None:
-    if value is None or not value.strip():
-        return None
-    return {int(item.strip()) for item in value.split(",") if item.strip()}
-
-
 def requested_stages(value: str | Sequence[str]) -> list[str]:
     if isinstance(value, str):
         if value.strip().lower() == "all":
@@ -103,73 +86,6 @@ def requested_stages(value: str | Sequence[str]) -> list[str]:
     if unknown:
         raise ValueError(f"Unknown stages: {unknown}. Valid stages: {list(STAGES)}")
     return stages
-
-
-def query_gpus() -> list[GPUInfo]:
-    command = [
-        "nvidia-smi",
-        "--query-gpu=index,name,memory.total,memory.used,utilization.gpu",
-        "--format=csv,noheader,nounits",
-    ]
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
-    gpus: list[GPUInfo] = []
-    for line in result.stdout.splitlines():
-        if not line.strip():
-            continue
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) != 5:
-            raise ValueError(f"Unexpected nvidia-smi row: {line!r}")
-        gpus.append(
-            GPUInfo(
-                index=int(parts[0]),
-                name=parts[1],
-                memory_total_mib=int(parts[2]),
-                memory_used_mib=int(parts[3]),
-                utilization_gpu_pct=int(parts[4]),
-            )
-        )
-    return gpus
-
-
-def classify_gpus(
-    gpus: Iterable[GPUInfo],
-    *,
-    max_gpu_util: int,
-    max_used_mib: int,
-    min_free_mib: int,
-    include: set[int] | None,
-    exclude: set[int] | None,
-) -> tuple[list[GPUInfo], list[dict[str, object]]]:
-    selected: list[GPUInfo] = []
-    rows: list[dict[str, object]] = []
-    for gpu in gpus:
-        reasons: list[str] = []
-        if include is not None and gpu.index not in include:
-            reasons.append("not in include list")
-        if exclude is not None and gpu.index in exclude:
-            reasons.append("excluded")
-        if gpu.utilization_gpu_pct > max_gpu_util:
-            reasons.append(f"utilization {gpu.utilization_gpu_pct}% > {max_gpu_util}%")
-        if gpu.memory_used_mib > max_used_mib:
-            reasons.append(f"used memory {gpu.memory_used_mib} MiB > {max_used_mib} MiB")
-        if gpu.memory_free_mib < min_free_mib:
-            reasons.append(f"free memory {gpu.memory_free_mib} MiB < {min_free_mib} MiB")
-        is_selected = not reasons
-        if is_selected:
-            selected.append(gpu)
-        rows.append(
-            {
-                "gpu": gpu.index,
-                "name": gpu.name,
-                "total_mib": gpu.memory_total_mib,
-                "used_mib": gpu.memory_used_mib,
-                "free_mib": gpu.memory_free_mib,
-                "util_pct": gpu.utilization_gpu_pct,
-                "selected": "yes" if is_selected else "no",
-                "reason": "selected" if is_selected else "; ".join(reasons),
-            }
-        )
-    return selected, rows
 
 
 def target_log_name(stage: str, target: str) -> str:
@@ -422,7 +338,7 @@ def check_environment(
         EnvironmentCheck("python", True, sys.executable),
         _python_import_check("sae_tools"),
         _command_version_check("snakemake", ["snakemake", "--version"]),
-        _command_version_check("nvidia-smi", ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]),
+        _gpu_check(),
     ]
     try:
         registry = Registry.load(registry_dir)
@@ -612,6 +528,18 @@ def _python_import_check(module: str) -> EnvironmentCheck:
         return EnvironmentCheck(f"import {module}", False, str(exc))
     detail = result.stderr.strip() or result.stdout.strip() or "ok"
     return EnvironmentCheck(f"import {module}", result.returncode == 0, detail)
+
+
+def _gpu_check() -> EnvironmentCheck:
+    backend, version = gpu_backend_info()
+    if backend == "nvidia-smi":
+        detail = version or "ok"
+        return EnvironmentCheck("gpu", True, f"nvidia-smi: {detail}")
+    if backend == "apple-silicon":
+        return EnvironmentCheck("gpu", True,
+            "apple-silicon: development-only (no NVIDIA GPU). "
+            "Activation generation and GPU runner require CUDA.")
+    return EnvironmentCheck("gpu", False, "no GPU backend detected (nvidia-smi not found)")
 
 
 def _command_version_check(name: str, command: Sequence[str]) -> EnvironmentCheck:
