@@ -20,32 +20,13 @@ class SAEWorkflowTUI(App):
         color: #d7dde4;
     }
 
-    #main {
-        height: 1fr;
-    }
-
-    #sidebar {
-        width: 39%;
-        min-width: 54;
-        border-right: solid #30363d;
-        padding: 0 1;
-    }
-
-    #content {
-        width: 1fr;
-        padding: 0 1;
-    }
-
-    .title {
-        height: 1;
-        color: #f0f3f6;
-        text-style: bold;
-        margin: 0 0 1 0;
-    }
-
     #selection {
         height: 1;
         color: #9fb0c2;
+    }
+
+    TabbedContent {
+        height: 1fr;
     }
 
     DataTable {
@@ -112,36 +93,33 @@ class SAEWorkflowTUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal(id="main"):
-            with Vertical(id="sidebar"):
-                yield Static("Experiments", classes="title")
+        yield Static("No experiment selected", id="selection")
+        with TabbedContent():
+            with TabPane("Experiments", id="experiments-tab"):
                 yield DataTable(id="experiments")
-            with Vertical(id="content"):
-                yield Static("No experiment selected", id="selection")
-                with TabbedContent():
-                    with TabPane("Checks", id="checks-tab"):
-                        yield DataTable(id="checks")
-                    with TabPane("Resources", id="resources-tab"):
-                        yield DataTable(id="resources")
-                    with TabPane("Artifacts", id="artifacts-tab"):
-                        yield DataTable(id="artifacts")
-                    with TabPane("Browse", id="browse-tab"):
-                        with Horizontal(id="artifact-browser"):
-                            yield DataTable(id="artifact-files")
-                            yield RichLog(id="artifact-detail", highlight=False, markup=False)
-                    with TabPane("GPUs", id="gpus-tab"):
-                        yield DataTable(id="gpus")
-                    with TabPane("Run", id="run-tab"):
-                        with Vertical(id="run-controls"):
-                            with Horizontal(id="stages"):
-                                yield Checkbox("activations", value=True, id="stage-activations")
-                                yield Checkbox("stat", value=True, id="stage-stat")
-                                yield Checkbox("geometric", value=True, id="stage-geometric")
-                            with Horizontal(id="run-buttons"):
-                                yield Button("Dry run", id="dry-run", variant="primary", disabled=True)
-                                yield Button("Run missing", id="run-missing", variant="success", disabled=True)
-                                yield Button("Refresh", id="refresh", variant="default")
-                        yield RichLog(id="run-log", highlight=True, markup=True)
+            with TabPane("Checks", id="checks-tab"):
+                yield DataTable(id="checks")
+            with TabPane("Resources", id="resources-tab"):
+                yield DataTable(id="resources")
+            with TabPane("Artifacts", id="artifacts-tab"):
+                yield DataTable(id="artifacts")
+            with TabPane("Browse", id="browse-tab"):
+                with Horizontal(id="artifact-browser"):
+                    yield DataTable(id="artifact-files")
+                    yield RichLog(id="artifact-detail", highlight=False, markup=False)
+            with TabPane("GPUs", id="gpus-tab"):
+                yield DataTable(id="gpus")
+            with TabPane("Run", id="run-tab"):
+                with Vertical(id="run-controls"):
+                    with Horizontal(id="stages"):
+                        yield Checkbox("activations", value=True, id="stage-activations")
+                        yield Checkbox("stat", value=True, id="stage-stat")
+                        yield Checkbox("geometric", value=True, id="stage-geometric")
+                    with Horizontal(id="run-buttons"):
+                        yield Button("Dry run", id="dry-run", variant="primary", disabled=True)
+                        yield Button("Run missing", id="run-missing", variant="success", disabled=True)
+                        yield Button("Refresh", id="refresh", variant="default")
+                yield RichLog(id="run-log", highlight=True, markup=True)
         yield Footer()
 
     def on_mount(self) -> None:
