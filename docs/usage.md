@@ -71,6 +71,11 @@ sae-tools-tui --config configs/experiments/response_grid.yaml
 The TUI pages are:
 
 - Experiments: scans `configs/experiments/*.yaml` and displays model, SAE, layer, dataset, target, and artifact counts.
+- New Experiment: opens a separate page-by-page creation wizard from the
+  Experiments page or the `c` key. The wizard validates registry IDs,
+  model/SAE compatibility, shared SAE layers, per-dataset split and
+  `max_samples` overrides, and writes a new YAML file under
+  `configs/experiments/`.
 - Checks: reports Python executable, `import sae_tools`, Snakemake, `nvidia-smi`, registry parsing, experiment parsing, requested SAE layers, dataset registry entries, and local resources.
 - Resources: checks requested models, datasets, and every requested SAE layer.
 - Artifacts: groups activation, statistical, and geometric targets as `done`, `missing`, `incomplete`, or `failed`.

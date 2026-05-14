@@ -6,8 +6,11 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Sequence
+from typing import Any, AsyncIterator, Sequence
 
+import yaml
+
+from sae_tools.workflow.artifacts import safe_path_part
 from sae_tools.workflow.registry import ExperimentSpec, Registry
 from sae_tools.workflow.gpu import gpu_backend_info
 from sae_tools.workflow.runtime import (
@@ -74,6 +77,35 @@ class TUIBackend:
             self.repo_root / "configs/experiments" if experiments_dir is None else Path(experiments_dir)
         )
         self.env = os.environ.copy() if env is None else dict(env)
+        self._cached_registry: Registry | None = None
+
+    def load_registry(self) -> Registry:
+        if self._cached_registry is None:
+            self._cached_registry = Registry.load(self.registry_dir)
+        return self._cached_registry
+
+    def experiment_path(self, experiment_name: str) -> Path:
+        name = experiment_name.strip()
+        if name.endswith(".yaml"):
+            name = name[:-5]
+        elif name.endswith(".yml"):
+            name = name[:-4]
+        experiment_id = safe_path_part(name, field="experiment")
+        return self.experiments_dir / f"{experiment_id}.yaml"
+
+    def validate_experiment(self, data: dict[str, Any], experiment_name: str) -> ExperimentSpec:
+        registry = self.load_registry()
+        return ExperimentSpec.from_mapping(data, path=self.experiment_path(experiment_name), registry=registry)
+
+    def save_experiment(self, data: dict[str, Any], experiment_name: str) -> Path:
+        path = self.experiment_path(experiment_name)
+        if path.exists():
+            raise FileExistsError(f"Experiment '{experiment_name}' already exists at {path}")
+        self.validate_experiment(data, experiment_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False, allow_unicode=True)
+        return path
 
     def list_experiments(self) -> list[ExperimentSummary]:
         return scan_experiments(self.experiments_dir, self.registry_dir, repo_root=self.repo_root)

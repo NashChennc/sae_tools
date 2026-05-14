@@ -1,0 +1,24 @@
+models:
+- qwen3-8b
+- qwen3-8b-guard
+saes:
+- qwen-scope-qwen3-8b-l0-100
+- qwen-scope-qwen3-8b-l0-50
+datasets:
+- id: Aegis2.0_response
+- id: BeaverTails_response
+- id: ToxicChat_response
+activation:
+  overwrite: false
+  batch_size: 2
+analyses:
+- geo_basic
+- stat_basic
+layers:
+- 15
+- 18
+- 21
+- 24
+- 27
+- 30
+- 33

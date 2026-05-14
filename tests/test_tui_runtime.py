@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
+import yaml
 
+from sae_tools_tui.app import CreateExperimentScreen, SAEWorkflowTUI
 from sae_tools_tui.backend import TUIBackend
 from sae_tools.workflow import runtime
 
@@ -112,6 +116,65 @@ def test_tui_backend_scans_artifact_files_and_details(tmp_path):
     assert '"status": "ok"' in json_detail
     assert "rows: 2" in parquet_detail
     assert "not loaded by the TUI" in binary_detail
+
+
+def test_tui_backend_saves_valid_experiment_config(tmp_path):
+    backend = TUIBackend(repo_root=Path.cwd(), registry_dir="configs/registry", experiments_dir=tmp_path)
+    data = {
+        "models": ["qwen3-8b"],
+        "saes": ["qwen-scope-qwen3-8b-l0-50"],
+        "layers": [18],
+        "datasets": [{"id": "ToxicChat_prompt", "max_samples": 10}],
+        "activation": {"overwrite": False, "batch_size": 2},
+        "analyses": ["stat_basic", "geo_basic"],
+    }
+
+    path = backend.save_experiment(data, "tui-created-smoke")
+
+    assert path == tmp_path / "tui-created-smoke.yaml"
+    assert yaml.safe_load(path.read_text(encoding="utf-8")) == data
+    with pytest.raises(FileExistsError):
+        backend.save_experiment(data, "tui-created-smoke")
+
+
+def test_tui_backend_rejects_unsafe_experiment_names(tmp_path):
+    backend = TUIBackend(repo_root=Path.cwd(), registry_dir="configs/registry", experiments_dir=tmp_path)
+
+    with pytest.raises(ValueError):
+        backend.experiment_path("../bad")
+    with pytest.raises(ValueError):
+        backend.experiment_path("bad value")
+    assert backend.experiment_path("ok.yaml") == tmp_path / "ok.yaml"
+
+
+def test_tui_create_screen_saves_config_from_independent_screen(tmp_path):
+    async def run_flow() -> None:
+        app = SAEWorkflowTUI(repo_root=Path.cwd())
+        app.backend = TUIBackend(repo_root=Path.cwd(), registry_dir="configs/registry", experiments_dir=tmp_path)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.open_create_experiment()
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, CreateExperimentScreen)
+            screen.draft.name = "ui-smoke"
+            screen.draft.models = {"qwen3-8b"}
+            screen.draft.saes = {"qwen-scope-qwen3-8b-l0-50"}
+            screen.draft.layers = {18}
+            screen.draft.datasets = {"ToxicChat_prompt"}
+            screen.draft.dataset_max_samples = {"ToxicChat_prompt": "10"}
+            screen.draft.analyses = {"stat_basic", "geo_basic"}
+            screen._save()
+            await pilot.pause()
+            assert app.selected_config == tmp_path / "ui-smoke.yaml"
+
+    asyncio.run(run_flow())
+
+    path = tmp_path / "ui-smoke.yaml"
+    assert path.exists()
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert data["activation"] == {"overwrite": False, "batch_size": 2}
+    assert data["layers"] == [18]
 
 
 def test_python_module_help_smoke():

@@ -164,6 +164,7 @@ The TUI lives under `src/sae_tools_tui/`.
 Responsibilities:
 
 - Display scans from `sae_tools.workflow.runtime`.
+- Create experiment YAML files through the registry-backed TUI wizard.
 - Stream stdout/stderr from Snakemake dry runs and idle-GPU runner commands.
 - Refresh artifact and GPU state while a command runs.
 - Disable run buttons when environment checks fail.
